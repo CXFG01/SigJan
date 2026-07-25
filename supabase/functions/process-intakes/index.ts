@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.110.8";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const workerToken = Deno.env.get("INTAKE_WORKER_TOKEN")!;
 const openaiKey = Deno.env.get("OPENAI_API_KEY")!;
 const model = Deno.env.get("OPENAI_HARMONIZATION_MODEL") ?? "gpt-5.6";
 const admin = createClient(supabaseUrl, serviceKey, {
@@ -216,7 +217,7 @@ async function processJob(jobId: string, expectedUserId?: string) {
 }
 
 Deno.serve(async (request) => {
-  if (request.headers.get("authorization") !== `Bearer ${serviceKey}`) {
+  if (!workerToken || request.headers.get("x-signalrx-worker-token") !== workerToken) {
     return new Response("Unauthorized", { status: 401 });
   }
   const body = await request.json().catch(() => ({}));

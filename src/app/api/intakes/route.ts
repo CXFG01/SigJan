@@ -89,7 +89,12 @@ export async function POST(request: Request) {
     return jsonError("Secure processing is temporarily unavailable. Your sources remain private.", 503);
   }
   after(async () => {
-    await admin.functions.invoke("process-intakes", { body: { requestedJobId: job.id } });
+    await admin.functions.invoke("process-intakes", {
+      body: { requestedJobId: job.id },
+      headers: {
+        "x-signalrx-worker-token": process.env.INTAKE_WORKER_TOKEN ?? "",
+      },
+    });
   });
   return NextResponse.json(job, { status: 202 });
 }
