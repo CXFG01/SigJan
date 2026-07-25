@@ -1,0 +1,23 @@
+# dependencies
+/node_modules
+/.pnpm-store
+
+# next
+/.next
+/out
+
+# testing
+/coverage
+/playwright-report
+/test-results
+
+# local environment
+.env*
+!.env.example
+
+# generated QA
+/.qa
+
+# OS and tooling
+.DS_Store
+*.tsbuildinfo
