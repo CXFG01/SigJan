@@ -71,6 +71,46 @@ describe("capture, confirmation, and attribution", () => {
     ).toBe(true);
   });
 
+  it("deduplicates provider aliases that map to one source medication", async () => {
+    const baseProvider = createSignalRxProvider();
+    const duplicateAliasProvider = {
+      async extract(
+        request: Parameters<typeof baseProvider.extract>[0],
+      ) {
+        const response = await baseProvider.extract(request);
+        if (
+          request.sourceId !== "source-cardizem-home-photo" ||
+          response.candidates.length === 0
+        ) {
+          return response;
+        }
+        return {
+          ...response,
+          candidates: [
+            ...response.candidates,
+            {
+              ...response.candidates[0],
+              id: "candidate-cardizem-alias-duplicate",
+              enteredName: "Cardizem CD",
+            },
+          ],
+        };
+      },
+      explain: baseProvider.explain.bind(baseProvider),
+    };
+
+    const boxes = await extractDemoIntakeSource(
+      "medicine_box",
+      undefined,
+      duplicateAliasProvider,
+    );
+
+    expect(boxes.entries.map((entry) => entry.id)).toEqual([
+      "med-ginkgo",
+      "med-cardizem-home-supply",
+    ]);
+  });
+
   it("lets a user correction supersede extraction while preserving provenance", () => {
     const diltiazem = DEMO_MEDICATION_ENTRIES.find(
       (entry) => entry.id === "med-diltiazem",

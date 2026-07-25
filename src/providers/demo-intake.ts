@@ -188,7 +188,7 @@ export async function extractDemoIntakeSource(
 
   const sources = specs.map((spec) => requireSource(spec.sourceId));
   const sourceLookup = new Map(sources.map((source) => [source.id, source]));
-  const entries = responses.flatMap((response, responseIndex) => {
+  const extractedEntries = responses.flatMap((response, responseIndex) => {
     const source = sourceLookup.get(specs[responseIndex].sourceId);
     if (!source) {
       return [];
@@ -204,6 +204,14 @@ export async function extractDemoIntakeSource(
         : [];
     });
   });
+  const entries = [
+    ...new Map(
+      extractedEntries.map((entry) => [
+        `${entry.id}:${entry.sourceId}`,
+        entry,
+      ]),
+    ).values(),
+  ];
   const sourceIds = new Set(sources.map((source) => source.id));
   const entryIds = new Set(entries.map((entry) => entry.id));
   const voiceContent = specs
