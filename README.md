@@ -91,9 +91,11 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The seeded demo works without API credentials, authentication, Supabase, or an
-external AI provider. Start at `/demo`, choose a role, and use the provided
-synthetic case.
+The seeded demo still works without credentials: local storage and the
+deterministic extractor remain resilient fallbacks. When the integration
+variables below are present, SignalRx creates an isolated anonymous Supabase
+session, synchronises the validated demo snapshot through RLS, and sends
+extraction requests through a server-only OpenAI route.
 
 For a production-style local build:
 
@@ -104,22 +106,26 @@ pnpm start
 
 ## Environment variables
 
-Copy `.env.example` to `.env.local` only if you want to prepare an external
-integration:
+Copy `.env.example` to `.env.local` to enable the connected path:
 
 ```bash
 Copy-Item .env.example .env.local
 ```
 
-| Variable | Required for demo | Purpose |
+| Variable | Required for connected mode | Purpose |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | No | Reserved for an optional, schema-validated extraction or explanation provider. Deterministic fixtures remain the fallback. |
-| `NEXT_PUBLIC_SUPABASE_URL` | No | Future Supabase project URL. |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | No | Future browser-safe Supabase anonymous key used with RLS. Never place a service-role key in a public variable. |
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL used for authentication and persistence. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | Browser-safe Supabase publishable key used with RLS. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Alternative | Backward-compatible alternative to the publishable key variable. Never place a service-role key in a public variable. |
+| `OPENAI_API_KEY` | Yes for live extraction | Server-only OpenAI credential. It is never included in the browser bundle. |
+| `OPENAI_MODEL` | No | Optional model override. The default is the current `gpt-5.6` alias. |
 
-The current hackathon path does not send the Evelyn fixture to an external
-service. Do not use real patient information while authentication, encryption,
-retention, clinical governance, and data-processing agreements are absent.
+Connected extraction sends the user-supplied source text to OpenAI. The
+response is schema-validated, normalised through the deterministic catalogue,
+kept provisional, and falls back to the seeded extractor on any provider or
+validation failure. Do not use real patient information until the required
+clinical governance, retention policy, security assessment, and
+data-processing agreements are in place.
 
 ## Demo walkthrough
 
@@ -231,6 +237,11 @@ The Supabase-compatible schema models:
   and
 - consent grants and append-oriented audit events.
 
+For the connected hackathon journey, `demo_sessions` stores a versioned
+validated UI snapshot for each anonymous authenticated visitor. Its RLS
+policies permit only that visitor to select, insert, update, or delete the
+snapshot; local storage remains the offline fallback.
+
 Each medication field can preserve its original and normalised value, source,
 confidence, confirmation state, last editor, and timestamp. A concern retains
 its rule and evidence identifiers, input snapshot, content and explanation
@@ -286,11 +297,12 @@ the repository’s visual-QA artifact for the current verified status.
 
 - The bundled scenario is synthetic and its evidence text is demo
   paraphrase/synthesis, not a comprehensive interaction database.
-- Upload, scan, and voice processing are deterministic simulations for
-  hackathon reliability.
-- Demo roles are not production authentication or authorisation.
-- The local state is not an electronic health record and is not a durable
-  cross-device clinical record.
+- Upload, scan, and voice capture surfaces are still text-backed simulations;
+  configured OpenAI extraction processes their supplied synthetic text.
+- Anonymous authentication isolates demo visitors but is not verified patient,
+  caregiver, or clinician identity.
+- Supabase snapshot persistence is durable demo state, not an electronic health
+  record or a substitute for the normalised clinical tables.
 - No live pharmacy, EHR/FHIR, laboratory, terminology, or product-catalogue
   integration is included.
 - Source search coverage is intentionally narrow; absence of a documented
@@ -299,16 +311,17 @@ the repository’s visual-QA artifact for the current verified status.
   label and independent data source.
 - The prototype has not completed clinical validation, human-factors testing,
   penetration testing, regulatory classification, or deployment governance.
-- The Supabase migration was structurally reviewed but was not executed against
-  a live PostgreSQL/Supabase instance in this environment.
+- Supabase migrations are applied through the CLI and must still be reviewed
+  and reverified for each deployment environment.
 
 ## Production next steps
 
 1. Conduct pharmacist-led clinical-content validation and formal safety-risk
    management, including hazard logs and controlled rule/evidence releases.
-2. Add Supabase Auth, least-privilege RLS verification, server-only privileged
-   operations, encryption, retention/deletion controls, consent withdrawal,
-   and immutable audit export.
+2. Replace anonymous demo identity with verified patient, caregiver, and
+   professional authentication; complete least-privilege RLS verification,
+   server-only privileged operations, encryption, retention/deletion controls,
+   consent withdrawal, and immutable audit export.
 3. Integrate authoritative medication terminology, product, interaction, renal
    monitoring, and supplement sources with licensing and version governance.
 4. Build provenance-preserving OCR/document ingestion, confidence calibration,

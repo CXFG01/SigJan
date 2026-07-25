@@ -11,6 +11,11 @@ import {
 } from "react";
 import type { ManualMedicationValues } from "@/components/intake/manual-medication-form";
 import {
+  deleteDemoSessionState,
+  loadDemoSessionState,
+  saveDemoSessionState,
+} from "@/lib/supabase/demo-session";
+import {
   appendReviewAction,
   applyClinicalRules,
   applyReviewActionToConcern,
@@ -40,6 +45,7 @@ import {
 } from "@/domain";
 import {
   extractDemoIntakeSource,
+  createBrowserSignalRxProvider,
   type DemoIntakeExtraction,
   type DemoIntakeSourceId,
 } from "@/providers";
@@ -144,14 +150,16 @@ function createInitialState(): PersistedDemoState {
 
 const DemoContext = createContext<DemoContextValue | null>(null);
 
-function readStoredState(): PersistedDemoState {
+function parsePersistedState(value: unknown): PersistedDemoState {
   const fallback = createInitialState();
   try {
-    const value = window.localStorage.getItem(STORAGE_KEY);
     if (!value) {
       return fallback;
     }
-    const parsed = JSON.parse(value) as Partial<PersistedDemoState>;
+    const parsed =
+      typeof value === "string"
+        ? (JSON.parse(value) as Partial<PersistedDemoState>)
+        : (value as Partial<PersistedDemoState>);
     const episode = EpisodeStateSchema.safeParse(parsed.episode);
     return {
       role:
@@ -171,6 +179,10 @@ function readStoredState(): PersistedDemoState {
   } catch {
     return fallback;
   }
+}
+
+function readStoredState(): PersistedDemoState {
+  return parsePersistedState(window.localStorage.getItem(STORAGE_KEY));
 }
 
 function withPlanVerification(
@@ -603,19 +615,51 @@ function applyReviewDispositionToEpisode(
 export function DemoProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PersistedDemoState>(createInitialState);
   const [hydrated, setHydrated] = useState(false);
+  const textProvider = useMemo(() => createBrowserSignalRxProvider(), []);
 
   useEffect(() => {
-    const hydrationTimer = window.setTimeout(() => {
-      setState(readStoredState());
-      setHydrated(true);
-    }, 0);
-    return () => window.clearTimeout(hydrationTimer);
+    let active = true;
+    const localState = readStoredState();
+
+    void loadDemoSessionState()
+      .then((remoteState) => {
+        if (!active) {
+          return;
+        }
+        setState(
+          remoteState === null
+            ? localState
+            : parsePersistedState(remoteState),
+        );
+      })
+      .catch(() => {
+        if (active) {
+          setState(localState);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setHydrated(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    if (hydrated) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (!hydrated) {
+      return;
     }
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const remoteSaveTimer = window.setTimeout(() => {
+      void saveDemoSessionState(state).catch(() => {
+        // Local storage remains the resilient offline fallback.
+      });
+    }, 500);
+    return () => window.clearTimeout(remoteSaveTimer);
   }, [hydrated, state]);
 
   const setRole = useCallback((role: DemoRole) => {
@@ -643,6 +687,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       const extraction = await extractDemoIntakeSource(
         sourceId,
         contentOverride,
+        textProvider,
       );
       const occurredAt = new Date().toISOString();
       setState((current) => {
@@ -660,13 +705,13 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         };
       });
     },
-    [],
+    [textProvider],
   );
 
   const importAllDemoSources = useCallback(async (): Promise<void> => {
     const extractions = await Promise.all(
       SEEDED_INTAKE_SOURCES.map((sourceId) =>
-        extractDemoIntakeSource(sourceId),
+        extractDemoIntakeSource(sourceId, undefined, textProvider),
       ),
     );
     const occurredAt = new Date().toISOString();
@@ -688,7 +733,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
         episode,
       };
     });
-  }, []);
+  }, [textProvider]);
 
   const addManualMedication = useCallback(
     (values: ManualMedicationValues) => {
@@ -1085,6 +1130,9 @@ export function DemoProvider({ children }: { children: ReactNode }) {
 
   const resetDemo = useCallback(() => {
     window.localStorage.removeItem(STORAGE_KEY);
+    void deleteDemoSessionState().catch(() => {
+      // A local reset still succeeds if remote persistence is unavailable.
+    });
     setState(createInitialState());
   }, []);
 

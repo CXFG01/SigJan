@@ -39,7 +39,7 @@ export const ExtractionRequestSchema = z
       "caregiver_statement",
       "manual_entry",
     ]),
-    content: z.string().min(1),
+    content: z.string().min(1).max(12_000),
     requestedAt: IsoDateTimeSchema,
   })
   .strict();
