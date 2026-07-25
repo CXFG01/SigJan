@@ -1,47 +1,42 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { getSupabaseConfig } from "./config";
 
-export function getSupabaseServerClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !publishableKey) {
-    return null;
-  }
-
-  return createClient(url, publishableKey, {
-    auth: {
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-      persistSession: false,
+export async function getSupabaseServerClient() {
+  const config = getSupabaseConfig();
+  if (!config) return null;
+  const cookieStore = await cookies();
+  return createServerClient(config.url, config.publishableKey, {
+    cookies: {
+      getAll: () => cookieStore.getAll(),
+      setAll: (items) => {
+        try {
+          items.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options),
+          );
+        } catch {
+          // Server Components cannot write cookies. proxy.ts refreshes them.
+        }
+      },
     },
   });
 }
 
-export async function authenticateRequest(
-  request: Request,
-): Promise<{ userId: string } | null> {
-  const authorization = request.headers.get("authorization");
-  if (!authorization?.startsWith("Bearer ")) {
-    return null;
-  }
-
-  const token = authorization.slice("Bearer ".length).trim();
-  if (!token) {
-    return null;
-  }
-
-  const supabase = getSupabaseServerClient();
-  if (!supabase) {
-    return null;
-  }
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-
-  return error || !user ? null : { userId: user.id };
+export async function requireUser() {
+  const supabase = await getSupabaseServerClient();
+  if (!supabase) return null;
+  const { data, error } = await supabase.auth.getUser();
+  return error || !data.user || data.user.is_anonymous ? null : data.user;
 }
 
+export async function requireUserOrRedirect() {
+  const user = await requireUser();
+  if (!user) redirect("/auth");
+  return user;
+}
+
+export async function authenticateRequest() {
+  const user = await requireUser();
+  return user ? { userId: user.id, email: user.email ?? null } : null;
+}
