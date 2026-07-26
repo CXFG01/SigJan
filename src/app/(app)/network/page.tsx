@@ -1,4 +1,5 @@
 import { LifestyleNetwork } from "@/components/lifestyle-network";
+import { InteractionInvestigatorPanel } from "@/components/interaction-investigator-panel";
 import { PageHeading } from "@/components/page-heading";
 import { getSupabaseServerClient, requireUserOrRedirect } from "@/lib/supabase/server";
 
@@ -16,6 +17,7 @@ export default async function NetworkPage() {
     <>
       <PageHeading eyebrow="Your confirmed record" title="Lifestyle Network" description="Explore the people, products, conditions, measurements, and routines you’ve chosen to connect." />
       <LifestyleNetwork name={profile?.preferred_name ?? "You"} items={(items ?? []) as never[]} relationships={relationships ?? []} />
+      <InteractionInvestigatorPanel />
     </>
   );
 }

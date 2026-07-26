@@ -48,6 +48,23 @@ Server-only variables:
 - `OPENAI_API_KEY`
 - `OPENAI_REALTIME_MODEL=gpt-realtime-2.1`
 - `OPENAI_HARMONIZATION_MODEL=gpt-5.6`
+- `OPENAI_INTERACTION_MODEL=gpt-5.6-sol`
+
+The Lifestyle Network includes a deterministic interaction screen and a
+server-side OpenAI Agents SDK investigator. Apply the latest Supabase migration
+before using it. Patient-visible AI explanations are published only after
+allowlisted-source, citation, schema, and treatment-language validation.
+
+After applying the interaction migration, import the official DDInter category
+CSVs into the versioned local snapshot:
+
+```powershell
+$env:DDINTER_VERSION = "2.0"
+pnpm import:ddinter C:\path\to\ddinter_A.csv C:\path\to\ddinter_B.csv
+```
+
+The importer accepts all downloaded category files, orders factor pairs
+deterministically, batches writes, and is idempotent for a source version.
 - `RESEND_API_KEY`
 - `RESEND_FROM_EMAIL`
 - `NHS_CONTENT_API_KEY`
