@@ -525,19 +525,19 @@ begin
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format(
-      'create policy %I on public.%I for select to authenticated using ((select auth.uid()) = user_id and coalesce((select auth.jwt()->>''is_anonymous'')::boolean, false) = false)',
+      'create policy %I on public.%I for select to authenticated using ((select auth.uid()) = user_id and coalesce(((select auth.jwt())->>''is_anonymous'')::boolean, false) = false)',
       t || '_select_own', t
     );
     execute format(
-      'create policy %I on public.%I for insert to authenticated with check ((select auth.uid()) = user_id and coalesce((select auth.jwt()->>''is_anonymous'')::boolean, false) = false)',
+      'create policy %I on public.%I for insert to authenticated with check ((select auth.uid()) = user_id and coalesce(((select auth.jwt())->>''is_anonymous'')::boolean, false) = false)',
       t || '_insert_own', t
     );
     execute format(
-      'create policy %I on public.%I for update to authenticated using ((select auth.uid()) = user_id and coalesce((select auth.jwt()->>''is_anonymous'')::boolean, false) = false) with check ((select auth.uid()) = user_id and coalesce((select auth.jwt()->>''is_anonymous'')::boolean, false) = false)',
+      'create policy %I on public.%I for update to authenticated using ((select auth.uid()) = user_id and coalesce(((select auth.jwt())->>''is_anonymous'')::boolean, false) = false) with check ((select auth.uid()) = user_id and coalesce(((select auth.jwt())->>''is_anonymous'')::boolean, false) = false)',
       t || '_update_own', t
     );
     execute format(
-      'create policy %I on public.%I for delete to authenticated using ((select auth.uid()) = user_id and coalesce((select auth.jwt()->>''is_anonymous'')::boolean, false) = false)',
+      'create policy %I on public.%I for delete to authenticated using ((select auth.uid()) = user_id and coalesce(((select auth.jwt())->>''is_anonymous'')::boolean, false) = false)',
       t || '_delete_own', t
     );
     execute format('revoke all on table public.%I from anon', t);
@@ -548,7 +548,7 @@ end $$;
 alter table public.content_snapshots enable row level security;
 create policy content_snapshots_read on public.content_snapshots
   for select to authenticated using (
-    coalesce((select auth.jwt()->>'is_anonymous')::boolean, false) = false
+    coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 revoke all on table public.content_snapshots from anon;
 grant select on table public.content_snapshots to authenticated;
@@ -558,7 +558,7 @@ create policy health_audit_events_select_own on public.health_audit_events
   for select to authenticated
   using (
     (select auth.uid()) = user_id
-    and coalesce((select auth.jwt()->>'is_anonymous')::boolean, false) = false
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 revoke all on table public.health_audit_events from anon, authenticated;
 grant select on table public.health_audit_events to authenticated;
@@ -568,30 +568,33 @@ create policy health_sources_select_own on storage.objects
   using (
     bucket_id = 'health-sources'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
-    and coalesce((select auth.jwt()->>'is_anonymous')::boolean, false) = false
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 create policy health_sources_insert_own on storage.objects
   for insert to authenticated
   with check (
     bucket_id = 'health-sources'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
-    and coalesce((select auth.jwt()->>'is_anonymous')::boolean, false) = false
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 create policy health_sources_update_own on storage.objects
   for update to authenticated
   using (
     bucket_id = 'health-sources'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   )
   with check (
     bucket_id = 'health-sources'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 create policy health_sources_delete_own on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'health-sources'
     and (storage.foldername(name))[1] = (select auth.uid()::text)
+    and coalesce(((select auth.jwt())->>'is_anonymous')::boolean, false) = false
   );
 
 revoke execute on all functions in schema public from public, anon, authenticated;

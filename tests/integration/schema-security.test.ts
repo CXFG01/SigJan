@@ -22,7 +22,7 @@ describe("longitudinal schema security", () => {
     expect(migration).toContain("revoke all on table public.%I from anon");
     expect(migration).toContain("(select auth.uid()) = user_id");
     expect(migration).toContain("with check ((select auth.uid()) = user_id");
-    expect(migration).toContain("auth.jwt()->>'is_anonymous'");
+    expect(migration).toContain("(select auth.jwt())->>'is_anonymous'");
   });
 
   it("keeps health source objects private and user-scoped", () => {
