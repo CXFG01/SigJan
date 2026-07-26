@@ -3,6 +3,10 @@
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, Mail } from "lucide-react";
+import {
+  getAuthEmailRedirectUrl,
+  getSafeAuthDestination,
+} from "@/lib/auth/redirect";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export function AuthFlow() {
@@ -26,7 +30,13 @@ export function AuthFlow() {
     }
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: getAuthEmailRedirectUrl(
+          window.location.origin,
+          search.get("next"),
+        ),
+      },
     });
     if (error) setMessage(error.message);
     else setStep("code");
@@ -49,7 +59,7 @@ export function AuthFlow() {
       setBusy(false);
       return;
     }
-    router.replace(search.get("next") || "/today");
+    router.replace(getSafeAuthDestination(search.get("next")));
     router.refresh();
   }
 
@@ -57,11 +67,11 @@ export function AuthFlow() {
     <div className="auth-panel">
       <div className="auth-icon"><Mail size={24} aria-hidden="true" /></div>
       <p className="eyebrow">{step === "email" ? "Create or sign in" : "Check your email"}</p>
-      <h1>{step === "email" ? "One email. No password." : "Enter your six-digit code."}</h1>
+      <h1>{step === "email" ? "One email. No password." : "Use your secure link or code."}</h1>
       <p>
         {step === "email"
-          ? "We’ll email you a short-lived code. No password to remember."
-          : `We sent a code to ${email}. It can only be used once.`}
+          ? "We’ll email you short-lived sign-in instructions. No password to remember."
+          : `We sent secure sign-in instructions to ${email}. They can only be used once.`}
       </p>
 
       {step === "email" ? (
@@ -78,14 +88,14 @@ export function AuthFlow() {
             />
           </label>
           <button className="button button-primary" disabled={busy}>
-            {busy ? "Sending your code…" : "Email me a code"}
+            {busy ? "Sending your email…" : "Email me a sign-in link"}
             {!busy ? <ArrowRight size={18} aria-hidden="true" /> : null}
           </button>
         </form>
       ) : (
         <form onSubmit={verifyCode} className="form-stack">
           <label>
-            Six-digit code
+            Six-digit code (if shown)
             <input
               required
               inputMode="numeric"
@@ -98,7 +108,10 @@ export function AuthFlow() {
               aria-describedby="code-help"
             />
           </label>
-          <p id="code-help" className="field-help">The code expires and cannot be replayed.</p>
+          <p id="code-help" className="field-help">
+            Open the secure link in the email. If the email also shows a code, you
+            can enter it here instead.
+          </p>
           <button className="button button-primary" disabled={busy || code.length !== 6}>
             {busy ? "Checking your code…" : "Open SignalRx"}
           </button>

@@ -72,9 +72,16 @@ deterministically, batches writes, and is idempotent for a source version.
 
 Never place a secret or service-role key in a `NEXT_PUBLIC_` variable.
 
-Supabase Auth must have anonymous sign-ins disabled. Configure custom SMTP through
-Resend and make the email template render `{{ .Token }}` so the user receives the
-six-digit OTP rather than a magic link.
+Supabase Auth must have anonymous sign-ins disabled. In Authentication > URL
+Configuration, set the Site URL to the canonical production origin and allow
+`https://<production-origin>/auth/callback`. Keep
+`http://localhost:3000/auth/callback` as an additional redirect URL for local
+development.
+
+The default Supabase email contains a secure sign-in link. To also present a
+six-digit code, configure custom SMTP through Resend and include `{{ .Token }}` in
+the email template. A secure link may use `{{ .ConfirmationURL }}`; the
+application callback supports both PKCE codes and token hashes.
 
 ## Database and worker
 
