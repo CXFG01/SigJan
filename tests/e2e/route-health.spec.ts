@@ -1,53 +1,23 @@
 import { expect, test } from "@playwright/test";
-import { startWithCleanDemo } from "./helpers";
 
-const requiredRoutes = [
-  "/",
-  "/demo",
-  "/patient/intake",
-  "/patient/confirm",
-  "/patient/reconcile",
-  "/patient/concerns",
-  "/patient/timeline",
-  "/patient/plan",
-  "/caregiver",
-  "/professional",
-  "/professional/review/episode-evelyn-post-discharge-2026-07",
-  "/research",
-  "/about/safety",
-] as const;
+test("public landing and safety boundary render", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Your health, organised around you." })).toBeVisible();
+  await expect(page.getByText("SignalRx organises information.")).toBeVisible();
+  await page.getByRole("link", { name: "Read our safety boundary" }).click();
+  await expect(page.getByRole("heading", { name: "Clear limits are part of the product." })).toBeVisible();
+});
 
-test.describe("required route health", () => {
-  test.skip(
-    ({ isMobile }) => Boolean(isMobile),
-    "The complete route matrix is checked once in desktop Chromium.",
-  );
+test("legacy role and workflow routes return the real 404", async ({ page }) => {
+  for (const route of ["/demo", "/caregiver", "/professional", "/research", "/patient/intake"]) {
+    const response = await page.goto(route);
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText("404 · Page not found")).toBeVisible();
+  }
+});
 
-  test("all required routes render without console or page errors", async ({
-    page,
-  }) => {
-    await startWithCleanDemo(page);
-    const errors: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error") {
-        errors.push(`console: ${message.text()}`);
-      }
-    });
-    page.on("pageerror", (error) => {
-      errors.push(`page: ${error.message}`);
-    });
-
-    for (const route of requiredRoutes) {
-      const response = await page.goto(route);
-      expect(response?.ok(), `${route} should return a successful response`).toBe(
-        true,
-      );
-      await expect(page.locator("main")).toBeVisible();
-      await expect(page.locator("h1")).toBeVisible();
-    }
-
-    expect(errors, "Required routes should not emit runtime errors").toEqual(
-      [],
-    );
-  });
+test("protected product routes redirect to OTP sign-in", async ({ page }) => {
+  await page.goto("/today");
+  await expect(page).toHaveURL(/\/auth/);
+  await expect(page.getByRole("heading", { name: "One email. No password." })).toBeVisible();
 });

@@ -2,39 +2,32 @@ import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/literata";
 import "./globals.css";
-import "@/styles/app-shell.css";
-import "@/styles/content-pages.css";
-import "@/styles/patient-workflow.css";
-import "@/styles/professional-workflow.css";
-import "@/styles/clinical.css";
-import { DemoProvider } from "@/context/demo-provider";
 
 export const metadata: Metadata = {
   title: {
-    default: "SignalRx — One accurate medication story",
+    default: "SignalRx — Your health, organised around you",
     template: "%s · SignalRx",
   },
   description:
-    "Bring medicines, vitamins, supplements, and actual use into one source-backed medication review.",
+    "A private UK personal health organiser for medicines, symptoms, appointments, tests, and daily routines.",
 };
 
 export const viewport: Viewport = {
   colorScheme: "light",
   themeColor: "#f6f3eb",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-scroll-behavior="smooth">
       <body>
         <a className="skip-link" href="#main-content">
           Skip to main content
         </a>
-        <DemoProvider>{children}</DemoProvider>
+        {children}
       </body>
     </html>
   );

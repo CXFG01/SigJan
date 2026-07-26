@@ -1,66 +1,14 @@
 "use client";
 
-import {
-  createClient,
-  type Session,
-  type SupabaseClient,
-} from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseConfig } from "./config";
 
-let browserClient: SupabaseClient | null | undefined;
-let sessionPromise: Promise<Session | null> | null = null;
+let client: SupabaseClient | null | undefined;
 
 export function getSupabaseBrowserClient(): SupabaseClient | null {
-  if (browserClient !== undefined) {
-    return browserClient;
-  }
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !publishableKey) {
-    browserClient = null;
-    return browserClient;
-  }
-
-  browserClient = createClient(url, publishableKey, {
-    auth: {
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      persistSession: true,
-    },
-  });
-  return browserClient;
-}
-
-export function getOrCreateSupabaseSession(): Promise<Session | null> {
-  if (sessionPromise) {
-    return sessionPromise;
-  }
-
-  sessionPromise = (async () => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      return null;
-    }
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      return session;
-    }
-
-    const { data, error } = await supabase.auth.signInAnonymously();
-    if (error) {
-      throw error;
-    }
-    return data.session;
-  })().catch(() => {
-    sessionPromise = null;
-    return null;
-  });
-
-  return sessionPromise;
+  if (client !== undefined) return client;
+  const config = getSupabaseConfig();
+  client = config ? createBrowserClient(config.url, config.publishableKey) : null;
+  return client;
 }
