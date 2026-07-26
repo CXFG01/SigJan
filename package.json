@@ -30,6 +30,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-hook-form": "^7.62.0",
+    "vis-network": "10.1.0",
     "zod": "^4.1.5"
   },
   "devDependencies": {

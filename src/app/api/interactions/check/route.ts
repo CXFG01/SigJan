@@ -31,10 +31,12 @@ export async function POST(request: Request) {
     ? new Date(parsed.data.assessmentTime)
     : new Date();
   try {
-    const [{ graph, hash }, knowledge] = await Promise.all([
-      loadPrivacySafeGraph(admin, auth.userId, assessmentTime),
-      loadInteractionKnowledge(admin),
-    ]);
+    const { graph, hash } = await loadPrivacySafeGraph(
+      admin,
+      auth.userId,
+      assessmentTime,
+    );
+    const knowledge = await loadInteractionKnowledge(admin, graph.factors);
     const run = await createInteractionRun(admin, {
       userId: auth.userId,
       kind: "deterministic_check",
@@ -42,7 +44,12 @@ export async function POST(request: Request) {
       graphHash: hash,
       assessmentTime: assessmentTime.toISOString(),
     });
-    const findings = screenDeterministically(graph, knowledge.ddi, knowledge.rules);
+    const findings = screenDeterministically(
+      graph,
+      knowledge.ddi,
+      knowledge.rules,
+      knowledge.knownDdiNames,
+    );
     const persisted = await persistDeterministicFindings(
       admin,
       auth.userId,

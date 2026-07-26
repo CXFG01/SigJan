@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_INTERACTION_MODEL } from "./config";
 import type {
   DeterministicFinding,
   DdiKnowledge,
@@ -17,29 +18,83 @@ import type {
   InvestigationEventType,
   InvestigationOutput,
 } from "./schemas";
+import type { PrivacySafeFactor } from "./graph";
 
-const DEFAULT_MODEL = "gpt-5.6-sol";
 
-export async function loadInteractionKnowledge(admin: SupabaseClient) {
-  const [{ data: ddi, error: ddiError }, { data: rules, error: ruleError }] =
+export async function loadInteractionKnowledge(
+  admin: SupabaseClient,
+  factors: PrivacySafeFactor[],
+) {
+  const factorNames = [
+    ...new Set(
+      factors.flatMap((factor) => [
+        factor.normalizedName,
+        factor.canonicalName,
+      ]),
+    ),
+  ].filter(Boolean);
+  if (!factorNames.length) return { ddi: [], rules: [], knownDdiNames: [] };
+
+  const [
+    { data: ddi, error: ddiError },
+    { data: rules, error: ruleError },
+    knownDdiNames,
+  ] =
     await Promise.all([
-      admin
-        .from("ddi_interactions")
-        .select(
-          "id,external_record_id,factor_a_normalized,factor_b_normalized,severity,interaction_source_releases(source_key,version,source_url)",
-        ),
-      admin
-        .from("lifestyle_interaction_rules")
-        .select(
-          "id,version,factor_a_normalized,factor_b_normalized,title,severity,concern,source_url,source_organization,jurisdiction",
-        )
-        .eq("active", true),
+      factorNames.length >= 2
+        ? admin
+            .from("ddi_interactions")
+            .select(
+              "id,external_record_id,factor_a_normalized,factor_b_normalized,severity,interaction_source_releases(source_key,version,source_url)",
+            )
+            .neq("severity", "Unknown")
+            .in("factor_a_normalized", factorNames)
+            .in("factor_b_normalized", factorNames)
+        : Promise.resolve({ data: [], error: null }),
+      factorNames.length >= 2
+        ? admin
+            .from("lifestyle_interaction_rules")
+            .select(
+              "id,version,factor_a_normalized,factor_b_normalized,title,severity,concern,source_url,source_organization,jurisdiction",
+            )
+            .eq("active", true)
+            .in("factor_a_normalized", factorNames)
+            .in("factor_b_normalized", factorNames)
+        : Promise.resolve({ data: [], error: null }),
+      Promise.all(
+        factorNames.map(async (name) => {
+          const [
+            { data: left, error: leftError },
+            { data: right, error: rightError },
+          ] = await Promise.all([
+            admin
+              .from("ddi_interactions")
+              .select("id")
+              .eq("factor_a_normalized", name)
+              .limit(1),
+            admin
+              .from("ddi_interactions")
+              .select("id")
+              .eq("factor_b_normalized", name)
+              .limit(1),
+          ]);
+          if (leftError || rightError) {
+            throw new Error(
+              `ddi_identity_knowledge_unavailable:${
+                leftError?.code ?? rightError?.code
+              }`,
+            );
+          }
+          return left?.length || right?.length ? name : null;
+        }),
+      ),
     ]);
   if (ddiError) throw new Error(`ddi_knowledge_unavailable:${ddiError.code}`);
   if (ruleError) throw new Error(`lifestyle_rules_unavailable:${ruleError.code}`);
   return {
     ddi: (ddi ?? []) as unknown as DdiKnowledge[],
     rules: (rules ?? []) as LifestyleRule[],
+    knownDdiNames: knownDdiNames.filter((name): name is string => Boolean(name)),
   };
 }
 
@@ -258,7 +313,7 @@ export async function cachePairReport(
       factor_a_normalized: factorA,
       factor_b_normalized: factorB,
       jurisdiction: input.jurisdiction,
-      model: process.env.OPENAI_INTERACTION_MODEL ?? DEFAULT_MODEL,
+      model: process.env.OPENAI_INTERACTION_MODEL ?? DEFAULT_INTERACTION_MODEL,
       prompt_version: PROMPT_VERSION,
       source_policy_version: SOURCE_POLICY_VERSION,
       report: input.output,

@@ -3,6 +3,8 @@ const CURATED_ALIASES: Record<string, string> = {
   eliquis: "apixaban",
   flagyl: "metronidazole",
   nurofen: "ibuprofen",
+  paracetamol: "acetaminophen",
+  "quinine sulfate": "quinine",
   zocor: "simvastatin",
   grapefruit: "grapefruit juice",
 };
@@ -16,6 +18,7 @@ export function normalizeFactorName(value: string) {
     .replace(/\b(tablets?|capsules?|oral|solution|modified release|mr)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .trim()
+    .replace(/^\d+\s+/, "")
     .replace(/\s+/g, " ");
   return CURATED_ALIASES[normalized] ?? normalized;
 }

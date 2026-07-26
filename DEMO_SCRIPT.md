@@ -1,88 +1,87 @@
-# SignalRx: 90-second demo
+# SignalRx: 60-second demo
 
-## Before presenting
+## Before the timer
 
-- Run `pnpm dev` and open `/demo`.
-- Use the bundled Evelyn Carter synthetic episode.
-- Keep `/professional/review/episode-evelyn-post-discharge-2026-07` and
-  `/patient/plan` ready in separate tabs as a reliable handoff.
-- Confirm the final button labels and review interaction after the last build.
-- Do not improvise a diagnosis, causal claim, or medication-change
-  recommendation.
+- Sign in to [SignalRx](https://jan-hackathon-omega.vercel.app).
+- Use a prepared account containing synthetic data only.
+- Open **Today**, **Add**, and **Lifestyle Network** in separate tabs.
+- Keep one completed evidence investigation ready to expand.
+- Do not claim diagnosis, causality, treatment advice, real users, or clinical
+  validation.
 
 ## Script
 
-### 0:00-0:12 — The problem
+### 0:00–0:08 — The small problem
 
-**On screen:** Landing page, then patient demo.
+**On screen:** Landing page.
 
-“Existing interaction checkers assess only the list they receive. SignalRx
-first builds an accurate, source-preserving list, then closes the loop through
-professional review. This is synthetic data, not medical advice.”
+> “Interaction checkers are only as reliable as the list they receive. But real
+> health information lives across labels, letters, notes, and memory.”
 
-### 0:12-0:28 — Capture and confirm
+### 0:08–0:20 — Capture without surrendering control
 
-**On screen:** Intake, then confirmation.
+**On screen:** Add → completed review list.
 
-“Evelyn Carter is 72 and recently discharged. Her record has four
-prescriptions, but she also reports intermittent ibuprofen and daily ginkgo.
-Document, package, voice, and manual inputs produce candidates only. Evelyn
-sees the original words, uncertainty, and missing fields before confirming or
-correcting each value.”
+> “SignalRx accepts text, documents, photos, or voice and turns them into a
+> simple review list. These are suggestions only: the original wording remains
+> visible, and nothing enters the record until the person confirms it.”
 
-### 0:28-0:42 — Reconcile the real regimen
+### 0:20–0:32 — Make the record useful
 
-**On screen:** Reconciliation.
+**On screen:** Today.
 
-“Reconciliation exposes an uncertain diltiazem strength, an older Cardizem SR
-box that may have stopped, a brand-versus-generic and formulation question,
-and missing dates. This is medication-list completeness, never a safety
-score.”
+> “Confirmed medicines, symptoms, conditions, routines, and appointments become
+> one private, longitudinal record organised around what matters today.”
 
-### 0:42-0:59 — Explain only what the evidence supports
+### 0:32–0:45 — Connect the whole picture
 
-**On screen:** Concerns; expand one evidence panel.
+**On screen:** Lifestyle Network.
 
-“Three deterministic concerns appear. Apixaban with reported ibuprofen has
-established evidence and needs review. Kidney monitoring is context-dependent
-because the current eGFR is missing. Ginkgo remains insufficient evidence
-because the exact product and dose are unknown. Each card separates severity,
-evidence, context match, and data completeness, with its source.”
+> “The Lifestyle Network connects every confirmed item to the person and forms
+> record relationships automatically. Deterministic DDInter knowledge flags
+> documented medicine concerns; AI cannot downgrade them.”
 
-### 0:59-1:16 — Accountable professional review
+### 0:45–0:56 — Research, with boundaries
 
-**On screen:** Professional episode review.
+**On screen:** Open one completed evidence investigation.
 
-“Pharmacist Amina Shah inspects sources and timeline, records a disposition
-and reason, then assigns ownership and follow-up. Ibuprofen is accepted for
-action, renal context is monitored, and Daniel is asked for the complete
-ginkgo package. Every decision is audited; generated prose cannot create
-concerns.”
+> “For a selected concern, an OpenAI agent searches authoritative clinical
+> sources. SignalRx then checks every citation, source domain, severity, and
+> treatment sentence before publishing the explanation.”
 
-### 1:16-1:30 — Close the loop
+### 0:56–1:00 — Close
 
-**On screen:** Approved patient plan.
+**On screen:** Expand **Sources consulted**, then collapse it.
 
-“Evelyn receives a plain-language plan with the verified list, unresolved
-items, owner, follow-up date, and questions. The boundary stays explicit: do
-not start, stop, or change prescribed treatment based only on SignalRx.”
+> “The evidence is there when needed, without overwhelming the person. SignalRx
+> organises and prepares better questions—it does not diagnose or change
+> treatment.”
 
-## If a judge asks
+## Judge questions
 
-**Where is the AI?**  
-“AI is optional and bounded to candidate extraction and plain-language
-rewriting. Strict schemas and deterministic fallback prevent it from selecting
-severity, inventing evidence, or creating concerns.”
+**Where is AI genuinely useful?**
 
-**Does a missing interaction mean the regimen is safe?**  
-“No. It means only that no documented concern was found in the sources
-searched, and we show the limits of that coverage.”
+It converts unstructured inputs into reviewable candidates and researches
+plain-language explanations. Deterministic code, user confirmation, and
+publication gates retain authority over the record.
 
-**Why include symptoms?**  
-“To organise timing and prepare questions. The timeline says events occurred
-during overlapping exposure; it never claims a medicine caused a symptom.”
+**Why not use AI for interaction severity?**
 
-**What becomes production next?**  
-“Governed clinical sources, pharmacist validation, production identity and
-consent, verified row-level access, durable audit, and integration with
-pharmacy or care records.”
+Severity and documented triggers come from deterministic knowledge. The model
+may explain or surface a separately labelled research lead, but it cannot remove
+or downgrade the deterministic result.
+
+**What happens when research fails validation?**
+
+Nothing is published and nothing changes in the person’s record. The run remains
+retryable.
+
+**Do you have real users?**
+
+No. This is a working hackathon prototype tested with synthetic data. We make no
+external-user or clinical-validation claim.
+
+**What would production require?**
+
+Clinical safety ownership, governed content licensing, privacy and regulatory
+work, incident response, prospective usability testing, and clinical evaluation.

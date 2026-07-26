@@ -21,6 +21,22 @@ import type {
 
 const encoder = new TextEncoder();
 
+export function classifyInvestigationFailure(error: unknown) {
+  if (!(error instanceof Error)) return "investigation_failed";
+  const message = error.message;
+  if (message === "openai_not_configured") return message;
+  if (message === "investigation_output_invalid") return message;
+  if (/Invalid schema for response_format/i.test(message)) {
+    return "investigation_schema_rejected";
+  }
+  if (error.name === "TimeoutError" || /timed?\s*out|timeout/i.test(message)) {
+    return "investigation_timed_out";
+  }
+  if (/\b(401|403)\b/.test(message)) return "investigator_access_denied";
+  if (/\b429\b|rate.?limit/i.test(message)) return "investigator_rate_limited";
+  return "investigation_failed";
+}
+
 function sse(event: InvestigationProgressEvent) {
   return encoder.encode(
     `id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`,
@@ -222,9 +238,14 @@ export function createInvestigationStream(input: {
           const interrupted = input.request.signal.aborted;
           const code = interrupted
             ? "client_disconnected"
-            : error instanceof Error
-              ? error.message.slice(0, 100)
-              : "investigation_failed";
+            : classifyInvestigationFailure(error);
+          if (!interrupted) {
+            console.error("interaction_investigation_failed", {
+              runId: input.runId,
+              code,
+              errorName: error instanceof Error ? error.name : "UnknownError",
+            });
+          }
           try {
             await completeInteractionRun(input.admin, input.runId, {
               status: interrupted ? "interrupted" : "failed",
@@ -236,7 +257,11 @@ export function createInvestigationStream(input: {
                 message:
                   code === "openai_not_configured"
                     ? "The evidence investigator is not configured."
-                    : "The evidence investigation could not be completed.",
+                    : code === "investigation_output_invalid"
+                      ? "The research result did not pass SignalRx's format checks. No changes were made to your record."
+                    : code === "investigation_timed_out"
+                      ? "The evidence search took too long. You can resume it safely."
+                      : "The evidence investigation could not be completed. No changes were made to your record.",
               });
             }
           } finally {

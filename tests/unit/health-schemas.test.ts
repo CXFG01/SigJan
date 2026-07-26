@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { intakeCreateSchema, onboardingSchema } from "@/lib/health/schemas";
+import { emergencyContactsSchema } from "@/lib/health/emergency-contacts";
 
 describe("patient-first input boundaries", () => {
   it("rejects an under-18 profile", () => {
@@ -54,5 +55,26 @@ describe("patient-first input boundaries", () => {
 
   it("accepts a freeform text intake without fabricating artifacts", () => {
     expect(intakeCreateSchema.parse({ mode: "text", text: "I take one tablet each morning." }).artifacts).toEqual([]);
+  });
+
+  it("accepts any number of structured emergency contacts within the safety limit", () => {
+    const parsed = emergencyContactsSchema.parse({
+      contacts: [
+        {
+          name: "Sam Taylor",
+          relationship: "Partner",
+          phoneNumber: "07123 456789",
+          notes: null,
+        },
+        {
+          name: "Dr A. Shah",
+          relationship: "GP",
+          phoneNumber: "020 7123 4567",
+          notes: "Weekdays",
+        },
+      ],
+    });
+    expect(parsed.contacts).toHaveLength(2);
+    expect(parsed.contacts[1]?.relationship).toBe("GP");
   });
 });

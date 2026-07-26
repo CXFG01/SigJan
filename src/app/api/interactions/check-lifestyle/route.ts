@@ -34,14 +34,13 @@ export async function POST(request: Request) {
   if (!admin) return jsonError("Evidence investigation is not configured.", 503);
 
   try {
-    const [{ graph, hash }, knowledge] = await Promise.all([
-      loadPrivacySafeGraph(admin, auth.userId),
-      loadInteractionKnowledge(admin),
-    ]);
+    const { graph, hash } = await loadPrivacySafeGraph(admin, auth.userId);
+    const knowledge = await loadInteractionKnowledge(admin, graph.factors);
     const deterministicFindings = screenDeterministically(
       graph,
       knowledge.ddi,
       knowledge.rules,
+      knowledge.knownDdiNames,
     );
     const run = await createInteractionRun(admin, {
       userId: auth.userId,

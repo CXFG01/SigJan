@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AudioLines,
   Camera,
@@ -15,7 +15,27 @@ import {
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Mode = "text" | "files" | "voice" | "live";
-type Job = { id: string; status: string; candidates?: Candidate[]; failureDetail?: string | null };
+type ProgressStage =
+  | "queued"
+  | "reading_sources"
+  | "extracting_facts"
+  | "organising_suggestions"
+  | "retrying"
+  | "ready"
+  | "failed";
+export type AddFlowJob = {
+  id: string;
+  status: string;
+  candidates?: Candidate[];
+  failureDetail?: string | null;
+  progressStage?: ProgressStage;
+  progressDetail?: string | null;
+  progressUpdatedAt?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+  attemptCount?: number;
+};
 type Candidate = {
   id: string;
   itemType: string;
@@ -31,16 +51,44 @@ const accept = [
   ".txt", ".csv", ".xls", ".xlsx",
 ].join(",");
 
-export function AddFlow({ userId }: { userId: string }) {
+export function AddFlow({ userId, initialJob = null }: { userId: string; initialJob?: AddFlowJob | null }) {
   const [mode, setMode] = useState<Mode>("text");
   const [text, setText] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
+  const [restoring, setRestoring] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [job, setJob] = useState<Job | null>(null);
+  const [job, setJob] = useState<AddFlowJob | null>(initialJob);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function restoreLatestIntake() {
+      try {
+        const latestResponse = await fetch("/api/intakes", {
+          signal: controller.signal,
+        });
+        if (latestResponse.status === 204 || !latestResponse.ok) return;
+        const latest = (await latestResponse.json()) as { id: string };
+        const detailResponse = await fetch(`/api/intakes/${latest.id}`, {
+          signal: controller.signal,
+        });
+        if (detailResponse.ok) setJob(await detailResponse.json());
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setMessage(
+            "Your last intake could not be restored. You can still add something new.",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) setRestoring(false);
+      }
+    }
+    void restoreLatestIntake();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     if (!job || !["queued", "processing"].includes(job.status)) return;
@@ -125,6 +173,18 @@ export function AddFlow({ userId }: { userId: string }) {
   }
 
   if (job) return <CandidateReview job={job} onRestart={() => { setJob(null); setFiles([]); setText(""); }} />;
+
+  if (restoring) {
+    return (
+      <div className="processing-state compact" role="status" aria-live="polite">
+        <span className="processing-mark" aria-hidden="true" />
+        <div>
+          <p className="eyebrow">Checking your record</p>
+          <h2>Looking for an intake already in progress</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="add-workspace">
@@ -227,35 +287,282 @@ function RealtimeVoice({ onTranscript }: { onTranscript: (value: string) => void
   );
 }
 
-function CandidateReview({ job, onRestart }: { job: Job; onRestart: () => void }) {
-  const candidates = job.candidates ?? [];
+function CandidateReview({ job, onRestart }: { job: AddFlowJob; onRestart: () => void }) {
+  const candidates = useMemo(() => job.candidates ?? [], [job.candidates]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [selected, setSelected] = useState(() => new Set(candidates.map((candidate) => candidate.id)));
+  const [edits, setEdits] = useState<Record<string, string>>(
+    () => Object.fromEntries(candidates.map((candidate) => [
+      candidate.id,
+      candidate.normalizedWording.trim() || candidate.originalWording.trim(),
+    ])),
+  );
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const retryRequests = useRef(new Set<number>());
+  const hydratedCandidateIds = useRef(new Set(candidates.map((candidate) => candidate.id)));
+  const isProcessing = ["queued", "processing"].includes(job.status);
 
-  async function confirmAll() {
+  useEffect(() => {
+    const newCandidates = candidates.filter(
+      (candidate) => !hydratedCandidateIds.current.has(candidate.id),
+    );
+    if (!newCandidates.length) return;
+
+    setSelected((current) => {
+      const next = new Set(current);
+      newCandidates.forEach((candidate) => next.add(candidate.id));
+      return next;
+    });
+    setEdits((current) => {
+      const next = { ...current };
+      newCandidates.forEach((candidate) => {
+        next[candidate.id] =
+          candidate.normalizedWording.trim() ||
+          candidate.originalWording.trim();
+      });
+      return next;
+    });
+    newCandidates.forEach((candidate) =>
+      hydratedCandidateIds.current.add(candidate.id),
+    );
+  }, [candidates]);
+
+  useEffect(() => {
+    if (!isProcessing) return;
+    const startedAt = job.createdAt
+      ? new Date(job.createdAt).getTime()
+      : Date.now();
+    const updateElapsed = () =>
+      setElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
+      );
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [isProcessing, job.createdAt]);
+
+  useEffect(() => {
+    if (job.status !== "queued" || job.progressStage !== "retrying") return;
+    const attempt = job.attemptCount ?? 0;
+    if (retryRequests.current.has(attempt)) return;
+    retryRequests.current.add(attempt);
+    void fetch(`/api/intakes/${job.id}/retry`, { method: "POST" }).then((response) => {
+      if (!response.ok) {
+        setMessage("Automatic retry could not start. You can stop this intake and try again.");
+      }
+    });
+  }, [job.id, job.status, job.progressStage, job.attemptCount]);
+
+  async function confirmSelected() {
+    const decisions = candidates
+      .filter((candidate) => selected.has(candidate.id))
+      .map((candidate) => {
+        const suggested =
+          candidate.normalizedWording.trim() ||
+          candidate.originalWording.trim();
+        const edited = edits[candidate.id]?.trim() || suggested;
+        return candidate.normalizedWording.trim() && edited === candidate.normalizedWording
+          ? { candidateId: candidate.id, action: "confirm" as const }
+          : {
+              candidateId: candidate.id,
+              action: "correct" as const,
+              corrected: {
+                originalWording: edited,
+                normalizedWording: edited,
+                details: candidate.details ?? {},
+              },
+            };
+      });
+    if (!decisions.length) {
+      setMessage("Select at least one suggestion to confirm.");
+      return;
+    }
     setBusy(true);
     const response = await fetch(`/api/intakes/${job.id}/confirm`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ decisions: candidates.map((candidate) => ({ candidateId: candidate.id, action: "confirm" })) }),
+      body: JSON.stringify({ decisions }),
     });
-    if (response.ok) setMessage("Confirmed. These facts are now part of your record.");
+    if (response.ok) {
+      setMessage("Confirmed. The selected facts are now part of your record.");
+      setSelected(new Set());
+    }
     else setMessage("We couldn’t confirm these facts. Your record has not changed.");
     setBusy(false);
   }
 
-  if (["queued", "processing"].includes(job.status)) {
-    return <div className="processing-state"><span className="processing-mark" /><p className="eyebrow">Secure processing</p><h2>Finding facts for you to review</h2><p>You can leave this page. The job will continue and retry independently.</p></div>;
+  async function cancelProcessing() {
+    setBusy(true);
+    setMessage(null);
+    const response = await fetch(`/api/intakes/${job.id}/cancel`, {
+      method: "POST",
+    });
+    const result = await response.json();
+    if (response.ok) window.location.reload();
+    else setMessage(result.error || "This intake could not be stopped.");
+    setBusy(false);
+  }
+
+  if (isProcessing) {
+    const stage =
+      job.progressStage ??
+      (job.status === "queued" ? "queued" : "extracting_facts");
+    const linearStage =
+      stage === "retrying" ? "queued" : stage === "failed" ? "queued" : stage;
+    const activeIndex =
+      {
+        queued: 1,
+        reading_sources: 2,
+        extracting_facts: 3,
+        organising_suggestions: 4,
+        ready: 4,
+      }[linearStage] ?? 1;
+    const elapsed =
+      elapsedSeconds < 60
+        ? `${elapsedSeconds}s`
+        : `${Math.floor(elapsedSeconds / 60)}m ${elapsedSeconds % 60}s`;
+    const steps = [
+      ["Received securely", "Your source is private and attached to this job."],
+      ["Waiting for processing", "The secure worker will pick up the job."],
+      ["Reading your sources", "Text, images, documents, or audio are being prepared."],
+      ["Finding possible facts", "Nothing is added to your record at this stage."],
+      ["Organising your review", "Suggestions are being prepared for your confirmation."],
+    ];
+
+    return (
+      <div className="processing-state" role="status" aria-live="polite">
+        <div className="processing-heading">
+          <span className="processing-mark" aria-hidden="true" />
+          <div>
+            <p className="eyebrow">Secure processing · {elapsed}</p>
+            <h2>Finding facts for you to review</h2>
+            <p>
+              {job.progressDetail ??
+                "Your intake is moving through the secure processing queue."}
+            </p>
+          </div>
+        </div>
+        <ol className="processing-timeline">
+          {steps.map(([title, detail], index) => {
+            const state =
+              index < activeIndex
+                ? "complete"
+                : index === activeIndex
+                  ? "active"
+                  : "pending";
+            return (
+              <li key={title} data-state={state}>
+                <span className="timeline-dot" aria-hidden="true" />
+                <div>
+                  <strong>{title}</strong>
+                  <span>{detail}</span>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+        {stage === "retrying" ? (
+          <p className="processing-retry">
+            The last attempt did not finish. SignalRx is retrying safely
+            {job.attemptCount ? ` (attempt ${job.attemptCount + 1} of 3)` : ""}.
+          </p>
+        ) : null}
+        <p className="processing-away">
+          You can leave this page. The job will continue independently, and no
+          suggestion changes your record until you confirm it.
+        </p>
+        <button className="button button-ghost" type="button" onClick={cancelProcessing} disabled={busy}>
+          {busy ? "Stopping…" : "Stop this intake"}
+        </button>
+        {message ? <p className="form-message" role="alert">{message}</p> : null}
+      </div>
+    );
   }
   if (job.status === "failed") {
     return <div className="teaching-empty"><h2>Extraction stopped safely</h2><p>{job.failureDetail || "No facts were added to your record."}</p><button className="button button-secondary" onClick={onRestart}>Start another intake</button></div>;
   }
+  if (!candidates.length) {
+    return <div className="teaching-empty"><h2>No suggested facts found</h2><p>Nothing has been added to your record. You can try again with a little more detail.</p><button className="button button-secondary" onClick={onRestart}>Start another intake</button></div>;
+  }
   return (
     <div className="candidate-review">
-      <div><p className="eyebrow">Your review</p><h2>Check every suggested fact</h2><p>Original wording stays beside the normalised suggestion. Edit or reject anything that is not right.</p></div>
-      <ul>{candidates.map((candidate) => <li key={candidate.id}><label><input type="checkbox" defaultChecked /><span><small>{candidate.itemType.replaceAll("_", " ")}</small><strong>{candidate.normalizedWording}</strong><em>Source said: “{candidate.originalWording}”</em>{candidate.uncertainty ? <p>{candidate.uncertainty}</p> : null}</span></label></li>)}</ul>
-      {message ? <p className="form-message" role="status">{message}</p> : null}
-      <div className="review-actions"><button className="button button-primary" onClick={confirmAll} disabled={busy || !candidates.length}>{busy ? "Confirming…" : "Confirm selected facts"}</button><button className="button button-ghost" onClick={onRestart}>Add something else</button></div>
+      <div>
+        <p className="eyebrow">Ready to review</p>
+        <h2>{candidates.length} suggested {candidates.length === 1 ? "fact" : "facts"}</h2>
+        <p>Everything is included by default. Scan the list, then modify or remove anything that is not right.</p>
+      </div>
+      <div className="review-summary" aria-live="polite">
+        <CheckCircle2 size={18} aria-hidden="true" />
+        <span><strong>{selected.size}</strong> of {candidates.length} will be added to your record</span>
+      </div>
+      <ul className="candidate-list">{candidates.map((candidate) => {
+        const isSelected = selected.has(candidate.id);
+        const isEditing = editingId === candidate.id;
+        const suggested =
+          edits[candidate.id]?.trim() ||
+          candidate.normalizedWording.trim() ||
+          candidate.originalWording.trim();
+        const sourceDiffers =
+          candidate.originalWording.trim().toLocaleLowerCase() !==
+          suggested.toLocaleLowerCase();
+
+        return (
+          <li key={candidate.id} data-excluded={!isSelected || undefined}>
+            <div className="candidate-list-row">
+              <CheckCircle2 className="candidate-status-icon" size={22} aria-hidden="true" />
+              <div className="candidate-copy">
+                <small>{candidate.itemType.replaceAll("_", " ")}</small>
+                <h3>{suggested}</h3>
+                {sourceDiffers ? <p className="candidate-source">From your source: “{candidate.originalWording}”</p> : null}
+                {candidate.uncertainty ? <p className="candidate-uncertainty">{candidate.uncertainty}</p> : null}
+              </div>
+              <div className="candidate-actions">
+                <button
+                  type="button"
+                  className="button button-ghost button-compact"
+                  onClick={() => setEditingId(isEditing ? null : candidate.id)}
+                  disabled={!isSelected}
+                  aria-expanded={isEditing}
+                  aria-controls={`candidate-editor-${candidate.id}`}
+                >
+                  {isEditing ? "Done" : "Modify"}
+                </button>
+                <button
+                  type="button"
+                  className="button button-ghost button-compact"
+                  onClick={() => {
+                    setSelected((current) => {
+                      const next = new Set(current);
+                      if (isSelected) next.delete(candidate.id);
+                      else next.add(candidate.id);
+                      return next;
+                    });
+                    if (isSelected) setEditingId(null);
+                  }}
+                >
+                  {isSelected ? "Remove" : "Restore"}
+                </button>
+              </div>
+            </div>
+            {isEditing ? (
+              <div className="candidate-editor" id={`candidate-editor-${candidate.id}`}>
+                <label htmlFor={`candidate-wording-${candidate.id}`}>How should this appear in your record?</label>
+                <input
+                  id={`candidate-wording-${candidate.id}`}
+                  value={edits[candidate.id] ?? ""}
+                  onChange={(event) => setEdits((current) => ({ ...current, [candidate.id]: event.target.value }))}
+                  maxLength={500}
+                  autoFocus
+                />
+              </div>
+            ) : null}
+          </li>
+        );
+      })}</ul>
+      {message ? <p className={`form-message${message.startsWith("Confirmed.") ? " form-message-success" : ""}`} role="status">{message}</p> : null}
+      <div className="review-actions"><button className="button button-primary" onClick={confirmSelected} disabled={busy || !selected.size}>{busy ? "Adding to your record…" : `Add ${selected.size} ${selected.size === 1 ? "fact" : "facts"} to my record`}</button><button className="button button-ghost" onClick={onRestart}>Add something else</button></div>
     </div>
   );
 }

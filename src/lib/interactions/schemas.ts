@@ -33,6 +33,12 @@ export const investigationRequestSchema = z.object({
 });
 
 const sourceRefSchema = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/i);
+const investigatedFactorSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    canonicalName: z.string().min(1).max(200),
+  })
+  .strict();
 
 export const interactionSourceSchema = z
   .object({
@@ -56,16 +62,9 @@ export const sourcedStatementSchema = z
 export const interactionBriefSchema = z
   .object({
     findingType: z.enum(["documented_concern", "research_lead"]),
-    factors: z.tuple([
-      z.object({
-        name: z.string().min(1).max(200),
-        canonicalName: z.string().min(1).max(200),
-      }),
-      z.object({
-        name: z.string().min(1).max(200),
-        canonicalName: z.string().min(1).max(200),
-      }),
-    ]),
+    // Structured Outputs supports homogeneous arrays, not JSON Schema tuple
+    // `items` arrays. Runtime validation still enforces an exact factor pair.
+    factors: z.array(investigatedFactorSchema).length(2),
     triggerType: z.enum([
       "ddinter",
       "curated_rule",

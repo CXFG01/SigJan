@@ -99,7 +99,7 @@ export const onboardingSchema = z
     sex: z.string().max(80).optional(),
     weightKg: z.coerce.number().positive().max(500).optional(),
     accessibilityNeeds: z.string().max(2000).optional(),
-    emergencyContact: z.string().max(500).optional(),
+    emergencyContact: z.string().max(2000).optional(),
     freeformAbout: z.string().max(10_000).optional(),
   })
   .superRefine((value, context) => {

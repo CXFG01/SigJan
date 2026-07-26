@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/literata";
+import "vis-network/styles/vis-network.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

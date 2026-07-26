@@ -37,6 +37,45 @@ export function OnboardingForm({ userId }: { userId: string }) {
       return;
     }
     const value = parsed.data;
+    let emergencyContact:
+      | {
+          originalText: string;
+          contacts: unknown[];
+          parsingStatus: "parsed" | "unavailable";
+          model?: string;
+          parserVersion?: string;
+        }
+      | null = null;
+    if (value.emergencyContact) {
+      try {
+        const response = await fetch("/api/onboarding/emergency-contacts", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ text: value.emergencyContact }),
+        });
+        const result = await response.json().catch(() => null);
+        emergencyContact = {
+          originalText: value.emergencyContact,
+          contacts:
+            response.ok && Array.isArray(result?.contacts)
+              ? result.contacts
+              : [],
+          parsingStatus: response.ok ? "parsed" : "unavailable",
+          ...(response.ok
+            ? {
+                model: result.model,
+                parserVersion: result.parserVersion,
+              }
+            : {}),
+        };
+      } catch {
+        emergencyContact = {
+          originalText: value.emergencyContact,
+          contacts: [],
+          parsingStatus: "unavailable",
+        };
+      }
+    }
     const supabase = getSupabaseBrowserClient();
     const { error } = await supabase!.from("health_profiles").upsert({
       user_id: userId,
@@ -51,9 +90,7 @@ export function OnboardingForm({ userId }: { userId: string }) {
       sex: value.sex || null,
       weight_kg: value.weightKg || null,
       accessibility_needs: value.accessibilityNeeds || null,
-      emergency_contact: value.emergencyContact
-        ? { summary: value.emergencyContact }
-        : null,
+      emergency_contact: emergencyContact,
       freeform_about: value.freeformAbout || null,
     });
     if (error) {
@@ -73,7 +110,9 @@ export function OnboardingForm({ userId }: { userId: string }) {
         <p>Only the essentials are required. You can change optional details later.</p>
         <div className="field-grid">
           <label>
-            Preferred name <span aria-hidden="true">*</span>
+            <span>
+              Preferred name <span aria-hidden="true">*</span>
+            </span>
             <input name="preferredName" required autoComplete="given-name" />
           </label>
           <label>
@@ -81,7 +120,9 @@ export function OnboardingForm({ userId }: { userId: string }) {
             <input name="familyName" autoComplete="family-name" />
           </label>
           <label>
-            Date of birth <span aria-hidden="true">*</span>
+            <span>
+              Date of birth <span aria-hidden="true">*</span>
+            </span>
             <input name="dateOfBirth" type="date" required autoComplete="bday" />
           </label>
           <label>
@@ -103,8 +144,19 @@ export function OnboardingForm({ userId }: { userId: string }) {
             <textarea name="accessibilityNeeds" rows={3} />
           </label>
           <label className="wide-field">
-            Emergency contact <span className="optional">Optional</span>
-            <textarea name="emergencyContact" rows={2} placeholder="Name, relationship, and how to reach them" />
+            <span>
+              Emergency contacts <span className="optional">Optional</span>
+            </span>
+            <textarea
+              name="emergencyContact"
+              rows={4}
+              placeholder="For example: Sam Taylor, partner, 07123 456789. Dr A. Shah, GP, 020 7123 4567."
+              aria-describedby="emergency-contact-help"
+            />
+            <span id="emergency-contact-help" className="field-help">
+              Name, relationship, phone number — add any number of important
+              people. SignalRx will organise them for you.
+            </span>
           </label>
           <label className="wide-field freeform-field">
             Anything else about you? <span className="optional">Optional</span>

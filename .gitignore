@@ -18,8 +18,22 @@
 # generated QA
 /.qa
 
+# local planning and tool state
+/.cursor/
+/.impeccable.md
+/Customer_Search.txt
+/IMPLEMENTATION_CHECKLIST.md
+/IMPLEMENTATION_NOTES.md
+/SignalRX_PRD.md
+/VISUAL_QA.md
+
+# experimental demo rendering workspace
+/video/
+
 # OS and tooling
 .DS_Store
+Thumbs.db
 *.tsbuildinfo
+*.log
 
 .vercel

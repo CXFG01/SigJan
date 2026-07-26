@@ -13,5 +13,6 @@ export default defineConfig([
     "test-results/**",
     ".qa/**",
     ".pnpm-store/**",
+    "video/**",
   ]),
 ]);

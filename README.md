@@ -1,26 +1,152 @@
 # SignalRx
 
-SignalRx is a private, UK-focused personal health organiser for adults aged 18+.
-It brings medicines, supplements, conditions, symptoms, tests, appointments, and
-daily routines into one user-confirmed longitudinal record.
+**Turn scattered health information into one confirmed record—then check what is actually worth reviewing.**
 
-SignalRx organises information. It does not diagnose, assign causality, recommend
-dose changes, automatically alter medicines, or replace professional care.
+[Open SignalRx](https://jan-hackathon-omega.vercel.app) · [Watch the 60-second demo flow](DEMO_SCRIPT.md)
 
-## Product
+SignalRx is a UK-focused personal health organiser for adults. It accepts the
+messy material people really have—medicine labels, prescriptions, documents,
+notes, and speech—structures it into suggestions, and asks the person to confirm
+or correct every item before it becomes part of their record.
 
-- Six-digit email OTP with cookie-based Supabase SSR sessions
-- Consent-led, minimal onboarding
-- Text, photo, document, recorded voice, and guided Realtime voice intake
-- Durable intake jobs with private Supabase Storage and Queues
-- Strict structured extraction with `gpt-5.6`; candidates require confirmation
-- Today, Lifestyle Network with accessible list parity, calendar, and library
-- Prescription comparison without automatic replacement
-- Sourced NHS information snapshots with attribution and weekly refresh
-- Deterministic supply estimates and user-led Yellow Card drafting
-- Account export and deletion
+The narrow problem is deliberate: an interaction checker cannot help if the
+medicine list it receives is incomplete, ambiguous, or not what the person
+actually takes.
 
-## Local setup
+> SignalRx is a hackathon prototype, not a medical device. It organises
+> information and prepares questions; it does not diagnose, assign causality,
+> change treatment, or guarantee safety.
+
+## Why it is different
+
+Most interaction checkers start with a clean list. SignalRx starts one step
+earlier:
+
+1. **Capture what the person has** in the format that is easiest for them.
+2. **Show a compact review list** with the original wording beside each
+   suggestion.
+3. **Require confirmation** before any suggestion changes the record.
+4. **Build a longitudinal Lifestyle Network** connecting medicines, conditions,
+   symptoms, routines, and care events.
+5. **Run deterministic checks first** using imported DDInter knowledge.
+6. **Research selected concerns on demand** using source-constrained AI, then
+   publish only results that pass schema, citation, source, and treatment-language
+   gates.
+
+AI helps with unstructured input and evidence synthesis. It does not get to
+silently create confirmed facts or downgrade deterministic findings.
+
+## The product
+
+- Passwordless email OTP and private Supabase sessions
+- Text, image, document, recorded-audio, and guided voice intake
+- Durable intake jobs with explicit processing and retry states
+- Low-friction candidate review: accept, edit, or exclude
+- Today view, calendar, searchable library, and record settings
+- Interactive Lifestyle Network with accessible list parity
+- Automatic record relationships and deterministic DDInter screening
+- Optional evidence investigation restricted to authoritative clinical domains
+- Collapsed, deduplicated source disclosure and plain-language progress states
+- Account export, deletion controls, and user-led Yellow Card drafting
+
+The interface uses a warm paper-and-ink visual system rather than a generic
+clinical dashboard. Uncertainty uses restrained amber; teal signals confirmed or
+safe-to-proceed interface states, never clinical safety.
+
+## One-minute judge route
+
+Prepare a signed-in account with **synthetic data only**, then:
+
+| Time | Show | Point |
+| --- | --- | --- |
+| 0:00–0:08 | Landing page | Health information is fragmented before it ever reaches an interaction checker. |
+| 0:08–0:20 | Add → review list | AI proposes structured facts; the person stays in control. |
+| 0:20–0:32 | Today | Confirmed information becomes a useful daily record. |
+| 0:32–0:45 | Lifestyle Network | The record becomes a connected, inspectable graph rather than a flat medicine list. |
+| 0:45–0:56 | Evidence investigation | Deterministic findings stay authoritative; AI researches the explanation and cites sources. |
+| 0:56–1:00 | Sources dropdown | Evidence is available without overwhelming the main experience. |
+
+The complete spoken script is in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A["Text, photo, document, or voice"] --> B["Private intake job"]
+    B --> C["Structured suggestions"]
+    C --> D{"User confirms?"}
+    D -- "Edit or exclude" --> C
+    D -- "Confirm" --> E["Longitudinal record"]
+    E --> F["Lifestyle Network"]
+    F --> G["Deterministic DDInter checks"]
+    G --> H["Optional evidence research"]
+    H --> I{"Publication gates"}
+    I -- "Pass" --> J["Source-linked explanation"]
+    I -- "Fail" --> K["No record change"]
+```
+
+### Safety and evidence boundaries
+
+- Intake output is validated with strict Zod schemas.
+- Candidate suggestions cannot mutate the record before confirmation.
+- The evidence investigator receives a privacy-minimised graph, not direct
+  identifiers or source files.
+- Research is restricted to an allowlist including NHS, NICE, GOV.UK, eMC,
+  regulators, WHO, and peer-reviewed indexes.
+- Every published clinical statement must reference a source present in the
+  provider search trace.
+- Agent-discovered items remain labelled as research leads.
+- DDInter triggers and severity cannot be removed, downgraded, or relabelled by
+  the model.
+- Patient-facing output is rejected if it tells someone to start, stop, skip,
+  replace, or change the dose of a medicine.
+
+## Technical implementation
+
+| Layer | Implementation |
+| --- | --- |
+| Web application | Next.js 16, React 19, TypeScript |
+| UI | Custom responsive design system, GSAP, vis-network |
+| Auth and data | Supabase Auth, Postgres, row-level security, private Storage |
+| Intake worker | Supabase Edge Function with durable job state |
+| AI extraction | GPT-5.6 with strict application-side validation |
+| Evidence research | OpenAI Agents SDK, GPT-5.6 Terra at medium reasoning, web search |
+| Interaction knowledge | Versioned DDInter CSV import plus curated deterministic rules |
+| Hosting | Vercel |
+| Verification | Vitest, Testing Library, Playwright, ESLint, TypeScript |
+
+The codebase separates deterministic knowledge, normalisation, graph preparation,
+AI investigation, evidence policy, persistence, and streaming. The current
+unit and integration suite contains **55 tests**, including privacy boundaries,
+owner RLS, schema security, deterministic matching, and evidence policy.
+Playwright coverage additionally checks protected routes, mobile overflow, and
+keyboard access.
+
+### Tools used where they genuinely help
+
+- **OpenAI:** structured candidate extraction and source-constrained evidence
+  research—the two places where unstructured language is the actual bottleneck.
+  It is deliberately excluded from confirmation authority and deterministic
+  interaction severity.
+- **Supabase:** passwordless identity, row-level ownership, private source
+  storage, durable intake state, Postgres relationships, and the intake worker.
+- **Vercel:** production hosting and server-side delivery of the Next.js
+  application at the public judge URL.
+- **vis-network:** an interactive, keyboard-focusable view of the confirmed
+  record, paired with a plain list so the graph is never the only interface.
+
+## Honest validation status
+
+This is a working hackathon prototype with synthetic demo data. **We have not
+conducted external user testing and do not claim real users.** The repository
+therefore makes no user-count, retention, clinical-outcome, or adoption claims.
+
+Before accepting real public health data, the project would need clinical safety
+ownership, a DPIA and lawful-basis review, a privacy and retention policy,
+subprocessor review, incident response, a clinical hazard log, and the relevant
+UK medical-software assessment.
+
+## Run locally
 
 Requirements: Node.js 20.9+, pnpm 11, and the Supabase CLI.
 
@@ -32,76 +158,40 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-There is no anonymous or fictional fallback. Connected Supabase configuration is
-required for registration and the personal record.
+There is no anonymous or fictional fallback. A connected Supabase project is
+required for registration and personal records.
 
-## Environment
+### Environment
 
-Browser variables:
+Copy `.env.example` and configure:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-
-Server-only variables:
-
-- `SUPABASE_SECRET_KEY` (or the legacy service-role key name)
+- `SUPABASE_SECRET_KEY`
 - `OPENAI_API_KEY`
 - `OPENAI_REALTIME_MODEL=gpt-realtime-2.1`
 - `OPENAI_HARMONIZATION_MODEL=gpt-5.6`
-- `OPENAI_INTERACTION_MODEL=gpt-5.6-sol`
+- `OPENAI_INTERACTION_MODEL=gpt-5.6-terra`
+- `OPENAI_ONBOARDING_MODEL=gpt-5.6-luna`
 
-The Lifestyle Network includes a deterministic interaction screen and a
-server-side OpenAI Agents SDK investigator. Apply the latest Supabase migration
-before using it. Patient-visible AI explanations are published only after
-allowlisted-source, citation, schema, and treatment-language validation.
+Never expose an OpenAI or Supabase secret through a `NEXT_PUBLIC_` variable.
 
-After applying the interaction migration, import the official DDInter category
-CSVs into the versioned local snapshot:
-
-```powershell
-$env:DDINTER_VERSION = "2.0"
-pnpm import:ddinter C:\path\to\ddinter_A.csv C:\path\to\ddinter_B.csv
-```
-
-The importer accepts all downloaded category files, orders factor pairs
-deterministically, batches writes, and is idempotent for a source version.
-- `RESEND_API_KEY`
-- `RESEND_FROM_EMAIL`
-- `NHS_CONTENT_API_KEY`
-- NHS Terminology Server system-to-system credentials
-
-Never place a secret or service-role key in a `NEXT_PUBLIC_` variable.
-
-Supabase Auth must have anonymous sign-ins disabled. In Authentication > URL
-Configuration, set the Site URL to the canonical production origin and allow
-`https://<production-origin>/auth/callback`. Keep
-`http://localhost:3000/auth/callback` as an additional redirect URL for local
-development.
-
-The default Supabase email contains a secure sign-in link. To also present a
-six-digit code, configure custom SMTP through Resend and include `{{ .Token }}` in
-the email template. A secure link may use `{{ .ConfirmationURL }}`; the
-application callback supports both PKCE codes and token hashes.
-
-## Database and worker
-
-The additive patient-first migration creates the longitudinal schema, explicit Data
-API grants, owner-based RLS, private `health-sources` storage policies, and the
-`intake_processing` queue.
+### Database and worker
 
 ```powershell
 pnpm dlx supabase db push
 pnpm dlx supabase functions deploy process-intakes
 ```
 
-Set `OPENAI_API_KEY` and `OPENAI_HARMONIZATION_MODEL` as Edge Function secrets.
-Schedule `process-intakes` using Supabase Cron so queued work retries independently
-of the browser. The application also invokes the worker after enqueueing.
+Set the worker’s OpenAI secret in Supabase. To load a licensed or downloaded
+DDInter snapshot:
 
-The legacy cleanup is intentionally a separate migration and should run only after
-the new application and additive schema pass preview verification.
+```powershell
+$env:DDINTER_VERSION = "2.0"
+pnpm import:ddinter C:\path\to\ddinter_A.csv C:\path\to\ddinter_B.csv
+```
 
-## Verification
+## Verify
 
 ```powershell
 pnpm lint
@@ -111,18 +201,5 @@ pnpm build
 pnpm test:e2e
 ```
 
-The automated surface checks age and consent boundaries, file limits, confirmation
-before record mutation, owner RLS, private Storage paths, schedule/run-out derivation,
-non-causal Yellow Card language, protected-route redirects, mobile overflow, keyboard
-access, and legacy 404s.
-
-## Public launch gates
-
-Do not accept real public health data until the DPIA, lawful bases under UK GDPR
-Articles 6 and 9, privacy notice, retention schedule, vendor/subprocessor review,
-incident response, clinical hazard log, intended-purpose assessment, DCB0129 review,
-and MHRA software classification review are complete.
-
-NHS Website Content and Terminology production credentials require onboarding.
-Until credentials are present, SignalRx exposes the coverage gap and leaves products
-unmatched; it never presents model output as authoritative normalisation.
+The live application is deployed at
+**[https://jan-hackathon-omega.vercel.app](https://jan-hackathon-omega.vercel.app)**.

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CalendarClock, Check, CirclePlus, Clock3, Pill } from "lucide-react";
+import { ArrowRight, CalendarClock, Check, CheckCircle2, Circle, CirclePlus, Clock3, Pill } from "lucide-react";
 import { PageHeading } from "@/components/page-heading";
 import { getSupabaseServerClient, requireUserOrRedirect } from "@/lib/supabase/server";
 
@@ -13,7 +13,12 @@ export default async function TodayPage() {
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
 
-  const [{ data: items }, { data: events }, { count: candidates }] = await Promise.all([
+  const [{ data: profile }, { data: items }, { data: events }, { count: candidates }] = await Promise.all([
+    supabase!
+      .from("health_profiles")
+      .select("preferred_name")
+      .eq("user_id", user.id)
+      .single(),
     supabase!
       .from("health_items")
       .select("id, display_name, item_type, details, starts_on, ends_on")
@@ -38,12 +43,48 @@ export default async function TodayPage() {
   const medicines = (items ?? []).filter((item) =>
     ["prescribed_medication", "otc_medication", "supplement", "herb"].includes(item.item_type),
   );
+  const medicineIds = medicines.map((medicine) => medicine.id);
+  const { data: regimens } = medicineIds.length
+    ? await supabase!
+        .from("medication_regimens")
+        .select("id, health_item_id")
+        .eq("user_id", user.id)
+        .eq("active", true)
+        .in("health_item_id", medicineIds)
+    : { data: [] };
+  const regimenIds = (regimens ?? []).map((regimen) => regimen.id);
+  const { data: segments } = regimenIds.length
+    ? await supabase!
+        .from("schedule_segments")
+        .select("regimen_id, local_times")
+        .eq("user_id", user.id)
+        .in("regimen_id", regimenIds)
+    : { data: [] };
+  const medicineSchedules = new Map(
+    medicines.map((medicine) => {
+      const regimen = (regimens ?? []).find((candidate) => candidate.health_item_id === medicine.id);
+      const times = (segments ?? [])
+        .filter((segment) => segment.regimen_id === regimen?.id)
+        .flatMap((segment) => segment.local_times ?? [])
+        .map((time) => String(time).slice(0, 5));
+      return [medicine.id, times] as const;
+    }),
+  );
+  const scheduledMedicineCount = [...medicineSchedules.values()].filter((times) => times.length).length;
+  const gettingStartedSteps = [
+    { label: "Add your first health item", detail: "Type, photograph, upload, or record it.", href: "/add", complete: Boolean(items?.length) },
+    { label: "Set a medicine time", detail: "Only if you take a medicine or supplement.", href: medicines[0] ? `/calendar?new=schedule&item=${medicines[0].id}` : "/add", complete: scheduledMedicineCount > 0 },
+    { label: "Add an appointment or follow-up", detail: "Keep the next date in one place.", href: "/calendar?new=event", complete: Boolean(events?.length) },
+  ];
+  const gettingStartedComplete = gettingStartedSteps.every((step) => step.complete);
   const nextAction =
     candidates && candidates > 0
       ? { href: "/add?review=1", label: `Review ${candidates} suggested ${candidates === 1 ? "fact" : "facts"}` }
       : medicines.length === 0
         ? { href: "/add", label: "Add your first health item" }
-        : { href: "/calendar", label: "Set up a medicine schedule" };
+        : scheduledMedicineCount < medicines.length
+          ? { href: `/calendar?new=schedule&item=${medicines.find((medicine) => !(medicineSchedules.get(medicine.id)?.length))?.id ?? medicines[0].id}`, label: "Set up a medicine schedule" }
+          : { href: "/add?mode=text", label: "Add something to your record" };
 
   return (
     <>
@@ -53,14 +94,33 @@ export default async function TodayPage() {
           day: "numeric",
           month: "long",
         }).format(new Date())}
-        title="Today"
-        description="What needs your attention, without the noise."
+        title={`Today, ${profile?.preferred_name ?? ""}`.trim()}
+        description="Your next steps, medicine routines, and plans in one place."
         action={
           <Link className="button button-primary" href={nextAction.href}>
             {nextAction.label} <ArrowRight size={18} />
           </Link>
         }
       />
+
+      {!gettingStartedComplete ? (
+        <section className="getting-started" aria-labelledby="getting-started-heading">
+          <div className="getting-started-intro">
+            <p className="eyebrow">Getting started</p>
+            <h2 id="getting-started-heading">Build a useful record in three small steps</h2>
+            <p>{gettingStartedSteps.filter((step) => step.complete).length} of {gettingStartedSteps.length} complete. You can do these in any order.</p>
+          </div>
+          <ol className="getting-started-list">
+            {gettingStartedSteps.map((step) => (
+              <li key={step.label} data-complete={step.complete}>
+                {step.complete ? <CheckCircle2 size={22} aria-hidden="true" /> : <Circle size={22} aria-hidden="true" />}
+                <div><strong>{step.label}</strong><p>{step.detail}</p></div>
+                {step.complete ? <span>Done</span> : <Link className="text-link" href={step.href}>Start <ArrowRight size={16} /></Link>}
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
 
       <section className="today-focus" aria-labelledby="next-heading">
         <div className="today-focus-mark"><Clock3 size={24} aria-hidden="true" /></div>
@@ -90,9 +150,11 @@ export default async function TodayPage() {
                   <div className="record-symbol medicine-symbol"><Pill size={19} /></div>
                   <div>
                     <Link href={`/items/${medicine.id}`}><strong>{medicine.display_name}</strong></Link>
-                    <p>No confirmed schedule yet</p>
+                    <p>{medicineSchedules.get(medicine.id)?.length ? `Daily at ${medicineSchedules.get(medicine.id)!.join(" and ")}` : "No confirmed schedule yet"}</p>
                   </div>
-                  <Link className="small-action" href="/calendar">Schedule</Link>
+                  <Link className="small-action" href={`/calendar?new=schedule&item=${medicine.id}`}>
+                    {medicineSchedules.get(medicine.id)?.length ? "Add time" : "Schedule"}
+                  </Link>
                 </li>
               ))}
             </ul>

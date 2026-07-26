@@ -51,18 +51,32 @@ type ProgressEvent = {
 };
 
 const eventLabels: Record<string, string> = {
-  run_started: "Investigation started",
-  graph_prepared: "Privacy-safe Lifestyle Network prepared",
-  factor_pair_selected: "Factor pair selected",
-  search_started: "Searching authoritative clinical sources",
-  source_discovered: "Authoritative source discovered",
-  source_reviewed: "Source reviewed",
-  evidence_conflict_found: "Conflicting evidence preserved",
-  validation_started: "Checking every claim and citation",
-  finding_validated: "Evidence standard passed",
-  run_completed: "Investigation complete",
-  run_failed: "Investigation could not be published",
+  run_started: "Research started",
+  graph_prepared: "Your private health information is ready",
+  factor_pair_selected: "Items selected for checking",
+  search_started: "Searching trusted clinical sources",
+  source_discovered: "Authoritative sources found",
+  source_reviewed: "Sources checked",
+  evidence_conflict_found: "Differences between sources noted",
+  validation_started: "Checking the evidence and citations",
+  finding_validated: "Evidence checks passed",
+  run_completed: "Research complete",
+  run_failed: "Research could not be completed",
 };
+
+export function compactProgressEvents(events: ProgressEvent[]) {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    if (event.type === "reasoning_summary_delta") return false;
+    const key =
+      event.type === "source_discovered" || event.type === "source_reviewed"
+        ? "authoritative_sources"
+        : event.type;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 async function readError(response: Response) {
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -88,7 +102,7 @@ async function consumeEventStream(response: Response, onEvent: (event: ProgressE
   }
 }
 
-export function InteractionInvestigatorPanel() {
+export function InteractionInvestigatorPanel({ itemCount }: { itemCount: number }) {
   const [findings, setFindings] = useState<Finding[]>([]);
   const [reports, setReports] = useState<InteractionBrief[]>([]);
   const [events, setEvents] = useState<ProgressEvent[]>([]);
@@ -96,7 +110,9 @@ export function InteractionInvestigatorPanel() {
   const [reasoningSummary, setReasoningSummary] = useState("");
   const [safetyStatement, setSafetyStatement] = useState("");
   const [consent, setConsent] = useState(false);
-  const [status, setStatus] = useState<"checking" | "ready" | "investigating" | "complete" | "error">("checking");
+  const [status, setStatus] = useState<"checking" | "ready" | "investigating" | "complete" | "error">(
+    itemCount < 2 ? "ready" : "checking",
+  );
   const [error, setError] = useState("");
   const [lastRequest, setLastRequest] = useState<{
     path: string;
@@ -123,11 +139,12 @@ export function InteractionInvestigatorPanel() {
   }, []);
 
   useEffect(() => {
+    if (itemCount < 2) return;
     const timer = window.setTimeout(() => {
       void checkKnownInteractions();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [checkKnownInteractions]);
+  }, [checkKnownInteractions, itemCount]);
 
   const handleProgress = useCallback((event: ProgressEvent) => {
     setEvents((current) => [...current, event]);
@@ -176,10 +193,18 @@ export function InteractionInvestigatorPanel() {
     }
   }, [handleProgress]);
 
-  const documented = findings.filter((finding) => finding.finding_type === "documented_concern");
+  const documented = findings.filter(
+    (finding) =>
+      finding.finding_type === "documented_concern" &&
+      !(
+        finding.trigger_type === "ddinter" &&
+        finding.source_severity?.toLowerCase() === "unknown"
+      ),
+  );
   const unresolved = findings.filter((finding) => finding.finding_type === "could_not_assess");
-  const latestStage = events.at(-1);
-  const canInvestigate = status !== "checking" && status !== "investigating";
+  const progressEvents = useMemo(() => compactProgressEvents(events), [events]);
+  const latestStage = progressEvents.at(-1);
+  const canInvestigate = itemCount >= 2 && status !== "checking" && status !== "investigating";
   const sourceCount = useMemo(() => new Set(sources.map((source) => source.url)).size, [sources]);
 
   return (
@@ -197,7 +222,7 @@ export function InteractionInvestigatorPanel() {
 
       <div className={styles.safetyLine} role="status">
         <ShieldCheck size={18} aria-hidden="true" />
-        <span>{status === "checking" ? "Checking confirmed, currently active items…" : safetyStatement || "The checker reports source coverage, never a guarantee of safety."}</span>
+        <span>{itemCount < 2 ? "Add at least two active items before checking for documented interactions." : status === "checking" ? "Checking confirmed, currently active items…" : safetyStatement || "The checker reports source coverage, never a guarantee of safety."}</span>
       </div>
 
       {documented.length ? (
@@ -209,7 +234,10 @@ export function InteractionInvestigatorPanel() {
                 <AlertTriangle size={20} aria-hidden="true" />
                 <div>
                   <strong>{finding.factor_names.join(" + ")}</strong>
-                  <span>{finding.trigger_type.replaceAll("_", " ")} · Source severity {finding.source_severity ?? "unknown"}</span>
+                  <span>
+                    {finding.trigger_type.replaceAll("_", " ")}
+                    {finding.source_severity ? ` · ${finding.source_severity} severity` : ""}
+                  </span>
                 </div>
               </div>
               <button className="button button-secondary" type="button" disabled={!canInvestigate} onClick={() => void runInvestigation("/api/interactions/investigate", { findingId: finding.id, jurisdiction: "GB" })}>
@@ -222,8 +250,20 @@ export function InteractionInvestigatorPanel() {
 
       {unresolved.length ? (
         <div className={styles.unresolved}>
-          <h3>Could not assess</h3>
-          <ul>{unresolved.map((finding) => <li key={finding.id}>{finding.factor_names.join(" + ")} needs a confirmed identity.</li>)}</ul>
+          <details>
+            <summary>
+              {unresolved.length} {unresolved.length === 1 ? "product name needs" : "product names need"} ingredient confirmation
+            </summary>
+            <p>
+              SignalRx recognised these labels, but could not safely map them to a
+              specific active ingredient. They were excluded from interaction checking.
+            </p>
+            <ul>
+              {unresolved.map((finding) => (
+                <li key={finding.id}>{finding.factor_names.join(" + ")}</li>
+              ))}
+            </ul>
+          </details>
         </div>
       ) : null}
 
@@ -245,12 +285,12 @@ export function InteractionInvestigatorPanel() {
       {events.length ? (
         <div className={styles.trace} aria-live="polite">
           <div className={styles.traceHeader}>
-            <div><p className="eyebrow">Live investigation trace</p><h3>{latestStage ? eventLabels[latestStage.type] ?? latestStage.type : "Starting"}</h3></div>
-            <span>{sourceCount} sources consulted</span>
+            <div><p className="eyebrow">Research progress</p><h3>{latestStage ? eventLabels[latestStage.type] ?? "Research in progress" : "Starting research"}</h3></div>
+            {sourceCount ? <span>{sourceCount} {sourceCount === 1 ? "source" : "sources"} found</span> : null}
           </div>
-          <ol>{events.filter((event) => event.type !== "reasoning_summary_delta").map((event) => <li key={`${event.runId}-${event.sequence}`}><CheckCircle2 size={16} aria-hidden="true" /><span>{eventLabels[event.type] ?? event.type}</span></li>)}</ol>
-          {reasoningSummary ? <details className={styles.reasoning}><summary>Reasoning summary</summary><p>{reasoningSummary}</p><small>This is a model-provided summary, not private chain-of-thought or a clinical conclusion.</small></details> : null}
-          {sources.length ? <div className={styles.liveSources}><h4>Sources found</h4><ul>{sources.map((source) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a><span>{source.domain}</span></li>)}</ul></div> : null}
+          <ol>{progressEvents.map((event) => <li key={`${event.runId}-${event.sequence}`}><CheckCircle2 size={16} aria-hidden="true" /><span>{eventLabels[event.type] ?? "Research in progress"}</span></li>)}</ol>
+          {reasoningSummary ? <details className={styles.reasoning}><summary>Research notes</summary><p>{reasoningSummary}</p><small>These notes describe the search process. They are not a clinical conclusion.</small></details> : null}
+          {sources.length ? <details className={styles.liveSources}><summary><span>Sources consulted</span><span>{sourceCount}</span></summary><ul>{sources.map((source) => <li key={source.url}><a href={source.url} target="_blank" rel="noreferrer">{source.title}</a><span>{source.domain}</span></li>)}</ul></details> : null}
         </div>
       ) : null}
 

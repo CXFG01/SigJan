@@ -6,6 +6,13 @@ const migration = readFileSync(
   join(process.cwd(), "supabase/migrations/20260725230527_patient_first_longitudinal_core.sql"),
   "utf8",
 );
+const progressMigration = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/20260726080634_intake_progress_stages.sql",
+  ),
+  "utf8",
+);
 
 describe("longitudinal schema security", () => {
   it("creates the required patient-owned record tables", () => {
@@ -36,5 +43,12 @@ describe("longitudinal schema security", () => {
     expect(migration).toContain("insert into public.health_items");
     expect(migration).toContain("grant execute on function public.confirm_intake_candidates");
     expect(migration).not.toMatch(/grant execute on function public\.confirm_intake_candidates[^;]+authenticated/i);
+  });
+
+  it("stores patient-visible operational progress without model reasoning", () => {
+    expect(progressMigration).toContain("add column progress_stage");
+    expect(progressMigration).toContain("'organising_suggestions'");
+    expect(progressMigration).toContain("progress_updated_at");
+    expect(progressMigration.toLowerCase()).not.toContain("chain_of_thought");
   });
 });

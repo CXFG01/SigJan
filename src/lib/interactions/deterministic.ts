@@ -59,12 +59,16 @@ export function screenDeterministically(
   graph: PrivacySafeGraph,
   ddi: DdiKnowledge[],
   rules: LifestyleRule[],
+  knownDdiNames: string[] = [],
 ) {
+  const assessedDdi = ddi.filter(
+    (entry) => entry.severity.toLowerCase() !== "unknown",
+  );
   const findings: DeterministicFinding[] = [];
   const asOf = new Date(graph.asOf);
   const active = graph.factors.filter((factor) => overlaps(factor, asOf));
-  const knownNames = new Set<string>();
-  ddi.forEach((entry) => {
+  const knownNames = new Set<string>(knownDdiNames);
+  assessedDdi.forEach((entry) => {
     knownNames.add(entry.factor_a_normalized);
     knownNames.add(entry.factor_b_normalized);
   });
@@ -99,7 +103,7 @@ export function screenDeterministically(
   }
 
   const ddiByPair = new Map(
-    ddi.map((entry) => [
+    assessedDdi.map((entry) => [
       pairKey(entry.factor_a_normalized, entry.factor_b_normalized),
       entry,
     ]),

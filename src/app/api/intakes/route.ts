@@ -4,6 +4,26 @@ import { jsonError, requireJson, sameOrigin } from "@/lib/http";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { authenticateRequest } from "@/lib/supabase/server";
 
+export async function GET() {
+  const auth = await authenticateRequest();
+  if (!auth) return jsonError("Sign in to view your intake.", 401);
+  const admin = getSupabaseAdminClient();
+  if (!admin) return jsonError("Secure intake processing is not configured.", 503);
+
+  const { data: latest, error } = await admin
+    .from("intake_jobs")
+    .select("id")
+    .eq("user_id", auth.userId)
+    .in("status", ["queued", "processing", "needs_review"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return jsonError("Your active intake could not be checked.", 500);
+  if (!latest) return new NextResponse(null, { status: 204 });
+  return NextResponse.json(latest);
+}
+
 export async function POST(request: Request) {
   const auth = await authenticateRequest();
   if (!auth) return jsonError("Sign in to create an intake.", 401);

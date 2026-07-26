@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 
 test("public landing and safety boundary render", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Your health, organised around you." })).toBeVisible();
-  await expect(page.getByText("SignalRx organises information.")).toBeVisible();
-  await page.getByRole("link", { name: "Read our safety boundary" }).click();
+  await expect(page.getByRole("heading", { name: "SignalRx" })).toBeVisible();
+  await expect(page.getByText("Your health, organised around you.")).toBeVisible();
+  await expect(page.getByText("SignalRx organises information. It does not diagnose, change doses, or replace professional care.")).toBeVisible();
+  await page.goto("/about/safety");
   await expect(page.getByRole("heading", { name: "Clear limits are part of the product." })).toBeVisible();
 });
 

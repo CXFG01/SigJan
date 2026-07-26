@@ -166,4 +166,50 @@ describe("deterministic interaction screening", () => {
       expect.objectContaining({ triggerType: "curated_rule" }),
     );
   });
+
+  it("recognizes a DDInter identity even when it has no current pair", () => {
+    const findings = screenDeterministically(
+      graph([
+        factor("factor-1", "Gabapentin"),
+        factor("factor-2", "Mystery capsule"),
+      ]),
+      [],
+      [],
+      ["gabapentin"],
+    );
+    expect(
+      findings.some(
+        (finding) =>
+          finding.triggerType === "unresolved_identity" &&
+          finding.factorNames.includes("Gabapentin"),
+      ),
+    ).toBe(false);
+    expect(findings).toContainEqual(
+      expect.objectContaining({
+        triggerType: "unresolved_identity",
+        factorNames: ["Mystery capsule"],
+      }),
+    );
+  });
+
+  it("does not publish DDInter records with unknown source severity", () => {
+    const findings = screenDeterministically(
+      graph([
+        factor("factor-1", "Metformin", { identityState: "matched" }),
+        factor("factor-2", "Vardenafil", { identityState: "matched" }),
+      ]),
+      [
+        {
+          id: "ddi-unknown",
+          external_record_id: "DDInter-test",
+          factor_a_normalized: "metformin",
+          factor_b_normalized: "vardenafil",
+          severity: "Unknown",
+        },
+      ],
+      [],
+    );
+
+    expect(findings.some((finding) => finding.triggerType === "ddinter")).toBe(false);
+  });
 });

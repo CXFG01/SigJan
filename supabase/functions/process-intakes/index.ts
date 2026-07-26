@@ -68,6 +68,27 @@ type Artifact = {
   original_text: string | null;
 };
 
+type ResponseOutput = {
+  type?: string;
+  content?: Array<{
+    type?: string;
+    text?: string;
+  }>;
+};
+
+function extractResponseText(result: { output_text?: unknown; output?: ResponseOutput[] }) {
+  if (typeof result.output_text === "string" && result.output_text.trim()) {
+    return result.output_text;
+  }
+  const text = (result.output ?? [])
+    .flatMap((item) => item.content ?? [])
+    .filter((item) => item.type === "output_text" && typeof item.text === "string")
+    .map((item) => item.text)
+    .join("");
+  if (!text.trim()) throw new Error("provider_missing_output_text");
+  return text;
+}
+
 async function safetyId(userId: string) {
   const bytes = new TextEncoder().encode(userId);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -132,9 +153,12 @@ async function processJob(jobId: string, expectedUserId?: string) {
   const { data: job } = await admin.from("intake_jobs").select("id, user_id, status, attempt_count")
     .eq("id", jobId).maybeSingle();
   if (!job || (expectedUserId && expectedUserId !== job.user_id)) return;
-  if (["needs_review", "completed"].includes(job.status)) return;
+  if (["needs_review", "completed", "failed"].includes(job.status)) return;
   await admin.from("intake_jobs").update({
     status: "processing",
+    progress_stage: "reading_sources",
+    progress_detail: "Reading the information you shared.",
+    progress_updated_at: new Date().toISOString(),
     started_at: new Date().toISOString(),
     attempt_count: job.attempt_count + 1,
     failure_code: null,
@@ -161,6 +185,11 @@ async function processJob(jobId: string, expectedUserId?: string) {
 
   try {
     const input = await buildInputs((artifacts ?? []) as Artifact[]);
+    await admin.from("intake_jobs").update({
+      progress_stage: "extracting_facts",
+      progress_detail: "Finding possible health facts without changing your record.",
+      progress_updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
@@ -177,8 +206,13 @@ async function processJob(jobId: string, expectedUserId?: string) {
     });
     if (!response.ok) throw new Error(`provider_${response.status}`);
     const result = await response.json();
-    const parsed = JSON.parse(result.output_text);
+    const parsed = JSON.parse(extractResponseText(result));
     if (!Array.isArray(parsed.candidates)) throw new Error("malformed_output");
+    await admin.from("intake_jobs").update({
+      progress_stage: "organising_suggestions",
+      progress_detail: "Organising the findings into suggestions for you to check.",
+      progress_updated_at: new Date().toISOString(),
+    }).eq("id", job.id);
     if (parsed.candidates.length) {
       await admin.from("candidate_facts").insert(parsed.candidates.map((candidate: Record<string, unknown>) => ({
         user_id: job.user_id,
@@ -202,13 +236,22 @@ async function processJob(jobId: string, expectedUserId?: string) {
     }).eq("id", run!.id);
     await admin.from("intake_jobs").update({
       status: "needs_review",
+      progress_stage: "ready",
+      progress_detail: "Your suggestions are ready to review.",
+      progress_updated_at: new Date().toISOString(),
       completed_at: new Date().toISOString(),
     }).eq("id", job.id);
   } catch (error) {
     const code = error instanceof Error ? error.message.slice(0, 80) : "processing_failed";
     await admin.from("extraction_runs").update({ status: "failed", failure_code: code, latency_ms: Date.now() - started }).eq("id", run!.id);
+    const willRetry = job.attempt_count + 1 < 3;
     await admin.from("intake_jobs").update({
-      status: job.attempt_count + 1 >= 3 ? "failed" : "queued",
+      status: willRetry ? "queued" : "failed",
+      progress_stage: willRetry ? "retrying" : "failed",
+      progress_detail: willRetry
+        ? "That attempt did not finish, so SignalRx will try again safely."
+        : "Processing stopped safely. Nothing was added to your record.",
+      progress_updated_at: new Date().toISOString(),
       failure_code: code,
       failure_detail: "Extraction stopped safely. No suggested fact was added to your record.",
     }).eq("id", job.id);
