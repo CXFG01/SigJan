@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/reminders/process",
-      "schedule": "15 7 * * *"
+      "path": "/api/checker/maintenance",
+      "schedule": "* * * * *"
     }
   ]
 }

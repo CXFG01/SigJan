@@ -1,197 +1,84 @@
 # SignalRx
 
-**Turn scattered health information into one confirmed record—then check what is actually worth reviewing.**
+**Paste a prescription. Confirm the medicines. Check documented interactions. Investigate uncertain evidence.**
 
-[Open SignalRx](https://jan-hackathon-omega.vercel.app) · [Watch the 60-second demo flow](DEMO_SCRIPT.md)
+SignalRx is an anonymous, UK-focused hackathon prototype for **synthetic prescriptions**. It shows database findings immediately and uses the **OpenAI Agents API** to investigate selected gaps. There are no accounts, personal histories, calendars, uploads or lifestyle graphs in the active application.
 
-SignalRx is a UK-focused personal health organiser for adults. It accepts the
-messy material people really have—medicine labels, prescriptions, documents,
-notes, and speech—structures it into suggestions, and asks the person to confirm
-or correct every item before it becomes part of their record.
+## The flow
 
-The narrow problem is deliberate: an interaction checker cannot help if the
-medicine list it receives is incomplete, ambiguous, or not what the person
-actually takes.
+1. Paste up to 8,000 characters, or enter medicines individually.
+2. Review medicine names, original wording, dose, route and frequency. Missing details stay blank. Exact ingredient identities are checked again on submission; unresolved names require correction.
+3. Check every pair in a list of two to ten medicines against active DDInter releases. Combination products are expanded to their constituent ingredients. Conflicting source records remain visible.
+4. Automatically investigate up to three uncertain pairs, prioritising conflicting evidence, incomplete findings, then uncovered pairs.
+5. Show research separately from immutable database findings. Unsupported, unavailable, cancelled and timed-out investigations remain explicitly unresolved.
 
-> SignalRx is a hackathon prototype, not a medical device. It organises
-> information and prepares questions; it does not diagnose, assign causality,
-> change treatment, or guarantee safety.
-
-## Why it is different
-
-Most interaction checkers start with a clean list. SignalRx starts one step
-earlier:
-
-1. **Capture what the person has** in the format that is easiest for them.
-2. **Show a compact review list** with the original wording beside each
-   suggestion.
-3. **Require confirmation** before any suggestion changes the record.
-4. **Build a longitudinal Lifestyle Network** connecting medicines, conditions,
-   symptoms, routines, and care events.
-5. **Run deterministic checks first** using imported DDInter knowledge.
-6. **Research selected concerns on demand** using source-constrained AI, then
-   publish only results that pass schema, citation, source, and treatment-language
-   gates.
-
-AI helps with unstructured input and evidence synthesis. It does not get to
-silently create confirmed facts or downgrade deterministic findings.
-
-## The product
-
-- Passwordless email OTP and private Supabase sessions
-- Text, image, document, recorded-audio, and guided voice intake
-- Durable intake jobs with explicit processing and retry states
-- Low-friction candidate review: accept, edit, or exclude
-- Today view, calendar, searchable library, and record settings
-- Interactive Lifestyle Network with accessible list parity
-- Automatic record relationships and deterministic DDInter screening
-- Optional evidence investigation restricted to authoritative clinical domains
-- Collapsed, deduplicated source disclosure and plain-language progress states
-- Account export, deletion controls, and user-led Yellow Card drafting
-
-The interface uses a warm paper-and-ink visual system rather than a generic
-clinical dashboard. Uncertainty uses restrained amber; teal signals confirmed or
-safe-to-proceed interface states, never clinical safety.
-
-## One-minute judge route
-
-Prepare a signed-in account with **synthetic data only**, then:
-
-| Time | Show | Point |
-| --- | --- | --- |
-| 0:00–0:08 | Landing page | Health information is fragmented before it ever reaches an interaction checker. |
-| 0:08–0:20 | Add → review list | AI proposes structured facts; the person stays in control. |
-| 0:20–0:32 | Today | Confirmed information becomes a useful daily record. |
-| 0:32–0:45 | Lifestyle Network | The record becomes a connected, inspectable graph rather than a flat medicine list. |
-| 0:45–0:56 | Evidence investigation | Deterministic findings stay authoritative; AI researches the explanation and cites sources. |
-| 0:56–1:00 | Sources dropdown | Evidence is available without overwhelming the main experience. |
-
-The complete spoken script is in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+No database match is a coverage statement, not a declaration of safety. Reports do not prescribe changes to treatment.
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    A["Text, photo, document, or voice"] --> B["Private intake job"]
-    B --> C["Structured suggestions"]
-    C --> D{"User confirms?"}
-    D -- "Edit or exclude" --> C
-    D -- "Confirm" --> E["Longitudinal record"]
-    E --> F["Lifestyle Network"]
-    F --> G["Deterministic DDInter checks"]
-    G --> H["Optional evidence research"]
-    H --> I{"Publication gates"}
-    I -- "Pass" --> J["Source-linked explanation"]
-    I -- "Fail" --> K["No record change"]
-```
+- Next.js / React / TypeScript website and server endpoints.
+- Supabase holds versioned interaction knowledge and private, temporary run/queue tables. A service key is used only on the server.
+- OpenAI Responses performs structured extraction with application validation and `store: false`.
+- OpenAI **Agents API**, through `openai` 7.15, creates one hosted session per selected pair. The previous `@openai/agents` SDK runner has been removed.
+- Sessions have subagents disabled, authoritative-domain web search, a read-only pair-evidence tool, and an HTTPS source-reader tool. Hosted sandbox network access is disabled; source retrieval takes place through the explicit tools.
+- Publication requires a valid report for the assigned pair, traced authoritative source URLs, at least two source domains for research leads, and the retained treatment-language checks. These checks do not establish clinical correctness.
 
-### Safety and evidence boundaries
+Implementation entrypoints: `src/lib/checker`, `src/app/api/checker`, and `src/components/prescription-checker.tsx`.
 
-- Intake output is validated with strict Zod schemas.
-- Candidate suggestions cannot mutate the record before confirmation.
-- The evidence investigator receives a privacy-minimised graph, not direct
-  identifiers or source files.
-- Research is restricted to an allowlist including NHS, NICE, GOV.UK, eMC,
-  regulators, WHO, and peer-reviewed indexes.
-- Every published clinical statement must reference a source present in the
-  provider search trace.
-- Agent-discovered items remain labelled as research leads.
-- DDInter triggers and severity cannot be removed, downgraded, or relabelled by
-  the model.
-- Patient-facing output is rejected if it tells someone to start, stop, skip,
-  replace, or change the dose of a medicine.
+### Limits and lifecycle
 
-## Technical implementation
+The default deployment allowance is 30 sessions per UTC day; `CHECKER_DAILY_SESSIONS` can lower it, including to zero. Database reservations enforce a global maximum of two active jobs. Sessions pending deletion retain their slot. There are five checks and five extractions per client per ten minutes. On Vercel, the client bucket uses the platform-overwritten IP header, hashed with a server secret; other hosts intentionally share a bucket until a trusted proxy is configured.
 
-| Layer | Implementation |
-| --- | --- |
-| Web application | Next.js 16, React 19, TypeScript |
-| UI | Custom responsive design system, GSAP, vis-network |
-| Auth and data | Supabase Auth, Postgres, row-level security, private Storage |
-| Intake worker | Supabase Edge Function with durable job state |
-| AI extraction | GPT-5.6 with strict application-side validation |
-| Evidence research | OpenAI Agents SDK, GPT-5.6 Terra at medium reasoning, web search |
-| Interaction knowledge | Versioned DDInter CSV import plus curated deterministic rules |
-| Hosting | Vercel |
-| Verification | Vitest, Testing Library, Playwright, ESLint, TypeScript |
+Each pair has a 90-second application deadline. Provider usage above 25,000 reported tokens also stops the job, but usage reporting is best effort, not a hard provider token cap. The installed Agents API creation schema does not expose an application-set token budget. Daily reservations and cancellation supply the primary bounds.
 
-The codebase separates deterministic knowledge, normalisation, graph preparation,
-AI investigation, evidence policy, persistence, and streaming. The current
-unit and integration suite contains **55 tests**, including privacy boundaries,
-owner RLS, schema security, deterministic matching, and evidence policy.
-Playwright coverage additionally checks protected routes, mobile overflow, and
-keyboard access.
+`next/server`'s `after()` runs the durable queue independently of the response stream. A **once-per-minute maintenance trigger is required** for recovery and expiry when the browser closes. `vercel.json` declares it; use a Vercel plan that supports that frequency, or call the protected endpoint from another scheduler. Local development also needs that trigger for unattended cleanup.
 
-### Tools used where they genuinely help
+Cancellation is persisted before provider cancellation. Deletion retries temporary 409 responses while cancellation becomes durable. Failed cleanup retains the provider ID for maintenance retry. Metadata reconciliation recovers sessions created immediately before a worker lost its connection.
 
-- **OpenAI:** structured candidate extraction and source-constrained evidence
-  research—the two places where unstructured language is the actual bottleneck.
-  It is deliberately excluded from confirmation authority and deterministic
-  interaction severity.
-- **Supabase:** passwordless identity, row-level ownership, private source
-  storage, durable intake state, Postgres relationships, and the intake worker.
-- **Vercel:** production hosting and server-side delivery of the Next.js
-  application at the public judge URL.
-- **vis-network:** an interactive, keyboard-focusable view of the confirmed
-  record, paired with a plain list so the graph is never the only interface.
+### Temporary data
 
-## Honest validation status
+Original prescription text is never written to application tables. The UI clears pasted text after extraction and keeps its run token only in memory. Temporary medicine context/results become inaccessible after one hour and are scrubbed on the next maintenance pass. Provider IDs may remain for cleanup retry. Nothing is placed in local/session storage or URL query parameters.
 
-This is a working hackathon prototype with synthetic demo data. **We have not
-conducted external user testing and do not claim real users.** The repository
-therefore makes no user-count, retention, clinical-outcome, or adoption claims.
-
-Before accepting real public health data, the project would need clinical safety
-ownership, a DPIA and lawful-basis review, a privacy and retention policy,
-subprocessor review, incident response, a clinical hazard log, and the relevant
-UK medical-software assessment.
+Provider deletion is requested on completion, cancellation or expiry. Physical cleanup can be asynchronous; OpenAI's retention policies remain separate. This is **not zero retention**. Raw patient text and provider errors are not logged by application handlers.
 
 ## Run locally
 
-Requirements: Node.js 20.9+, pnpm 11, and the Supabase CLI.
+Use Node.js 22+ and pnpm. Copy `.env.example` to `.env.local` and supply the Supabase server URL/key and OpenAI project key. Existing `NEXT_PUBLIC_SUPABASE_URL` and legacy service-role keys remain accepted, but the checker does not require a public browser key or JWKS URL.
 
 ```powershell
 pnpm install
-Copy-Item .env.example .env.local
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+If your shell already defines a key, Next.js gives that inherited variable precedence over `.env.local`; remove the stale shell value or restart with the correct environment.
 
-There is no anonymous or fictional fallback. A connected Supabase project is
-required for registration and personal records.
+### Database preparation
 
-### Environment
+The additive migration `supabase/migrations/20260912162223_anonymous_checker.sql` creates the server-only run, job and counter tables and atomic functions. **It must be applied before connected checking can work.** Existing patient records and historical migrations are preserved. This implementation does not apply migrations to the hosted project or deploy the website.
 
-Copy `.env.example` and configure:
+For a future deployment, review and apply the migration using your normal Supabase migration workflow. Set `CRON_SECRET` for the scheduler's `Authorization: Bearer ...` header. Verify cleanup and quotas before enabling the demo. Retired remotely deployed intake/reminder workers should also be disabled during that rollout; removing repository routes does not undeploy a remote function.
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SECRET_KEY`
-- `OPENAI_API_KEY`
-- `OPENAI_REALTIME_MODEL=gpt-realtime-2.1`
-- `OPENAI_HARMONIZATION_MODEL=gpt-5.6`
-- `OPENAI_INTERACTION_MODEL=gpt-5.6-terra`
-- `OPENAI_ONBOARDING_MODEL=gpt-5.6-luna`
-
-Never expose an OpenAI or Supabase secret through a `NEXT_PUBLIC_` variable.
-
-### Database and worker
+The configured project was read-only verified on 2026-09-12: DDInter 2.0 has 160,235 records and the existing attributed seed release has one. Source checks query actual active-release counts and paginate findings. No CSV is bundled. To import an authorised snapshot, set `DDINTER_VERSION` and run:
 
 ```powershell
-pnpm dlx supabase db push
-pnpm dlx supabase functions deploy process-intakes
+node --env-file=.env.local scripts/import-ddinter.mjs C:\path\to\ddinter.csv
 ```
 
-Set the worker’s OpenAI secret in Supabase. To load a licensed or downloaded
-DDInter snapshot:
+Additional sources implement `SourceAdapter.check(ingredients)`, returning findings, provenance, coverage and errors. There is no arbitrary CSV upload or automatic trust in an unknown API.
 
-```powershell
-$env:DDINTER_VERSION = "2.0"
-pnpm import:ddinter C:\path\to\ddinter_A.csv C:\path\to\ddinter_B.csv
-```
+## Endpoint contract
 
-## Verify
+| Endpoint | Input / output |
+| --- | --- |
+| `POST /api/checker/extract` | `{text}` → editable candidates with original wording and identity status |
+| `POST /api/checker/check` | `{medicines, idempotencyKey}` → `{token, run}`; each medicine has `name`, `dose`, `route`, `frequency` |
+| `GET /api/checker/run` | `Authorization: Bearer <token>` → latest public run; provider IDs never returned |
+| `DELETE /api/checker/run` | Same bearer token → cancels pending research while preserving completed findings |
+| `GET /api/checker/maintenance` | Cron secret bearer token → reconciliation, expiry cleanup and queue processing |
+
+Retry a check with the same UUID and same medicine list. A conflicting payload receives 409. Invalid identities receive 422; throttled requests receive 429. Missing provider/storage configuration is explicit, with no old SDK or fictional data fallback.
+
+## Verification
 
 ```powershell
 pnpm lint
@@ -201,5 +88,15 @@ pnpm build
 pnpm test:e2e
 ```
 
-The live application is deployed at
-**[https://jan-hackathon-omega.vercel.app](https://jan-hackathon-omega.vercel.app)**.
+Tests cover real PostgreSQL semantics locally through PGlite, pair selection, immutable findings, cancellation races, quotas, token boundaries and citation policy. Browser tests use explicitly mocked service responses to verify the interface on desktop/mobile; they do not claim a deployed end-to-end clinical test. Historical database/security contracts remain tested.
+
+Optional live checks use **synthetic data only**, load `.env.local` explicitly, consume API usage and write ignored `.qa` artifacts:
+
+```powershell
+node --import tsx scripts/verify-checker.ts
+node --import tsx scripts/verify-agents.ts
+```
+
+The successful live investigation on 2026-09-12 passed source/publication validation with two authoritative sources in about 70 seconds; provider deletion succeeded. This demonstrates execution, not clinical accuracy. See `DEMO_SCRIPT.md` for the revised demonstration.
+
+Official references: [Agents API](https://developers.openai.com/api/docs/guides/agents-api/overview), [session lifecycle](https://developers.openai.com/api/docs/guides/agents-api/sessions/manage), [function tools](https://developers.openai.com/api/docs/guides/agents-api/tools/functions).

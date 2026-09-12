@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "SignalRx",
     short_name: "SignalRx",
-    description: "A private UK personal health organiser for adults.",
+    description: "An anonymous prescription interaction checker with sourced investigations.",
     start_url: "/",
     display: "standalone",
     background_color: "#f6f3eb",

@@ -35,6 +35,7 @@ export function domainForUrl(value: string) {
 }
 
 export function isAllowedSourceUrl(value: string) {
+  try { if (new URL(value).protocol !== "https:") return false; } catch { return false; }
   const domain = domainForUrl(value);
   return AUTHORITATIVE_DOMAINS.some(
     (allowed) => domain === allowed || domain.endsWith(`.${allowed}`),
@@ -84,6 +85,7 @@ function allPatientText(report: InteractionBrief) {
     ...report.warningSigns.map((entry) => entry.text),
     report.nextStepExplanation.text,
     report.pharmacistQuestion,
+    ...report.missingInformation,
     ...report.limitations,
   ].join("\n");
 }
@@ -93,6 +95,9 @@ export function validateInvestigation(
   consultedUrls: ReadonlySet<string>,
 ) {
   const failures: string[] = [];
+  if (PROHIBITED_TREATMENT_INSTRUCTIONS.some(pattern => pattern.test(output.overallLimitations.join("\n")))) {
+    failures.push("Overall limitations contain a treatment-change instruction");
+  }
 
   for (const [reportIndex, report] of output.reports.entries()) {
     const prefix = `reports[${reportIndex}]`;

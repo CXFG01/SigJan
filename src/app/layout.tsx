@@ -1,16 +1,16 @@
 import type { Metadata, Viewport } from "next";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import "@fontsource-variable/literata";
-import "vis-network/styles/vis-network.css";
 import "./globals.css";
+import "@/styles/checker.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "SignalRx — Your health, organised around you",
+    default: "SignalRx — Understand your prescription",
     template: "%s · SignalRx",
   },
   description:
-    "A private UK personal health organiser for medicines, symptoms, appointments, tests, and daily routines.",
+    "Check documented medicine interactions and investigate uncertain evidence. An anonymous UK prototype.",
 };
 
 export const viewport: Viewport = {
